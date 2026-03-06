@@ -508,13 +508,33 @@ export async function registerRoutes(
   app.post(api.auth.register.path, async (req, res) => {
     try {
       const input = api.auth.register.input.parse(req.body);
+      const existing = await storage.getUserByEmail(input.email);
+      if (existing) {
+        return res.status(409).json({ message: "Email already registered. Please sign in." });
+      }
+
       const user = await storage.createUser(input);
       res.status(201).json({ token: "mock-jwt-token-" + user.id, user });
     } catch (err) {
       if (err instanceof z.ZodError) {
         res.status(400).json({ message: err.errors[0].message });
       } else {
-        res.status(400).json({ message: "Error creating user" });
+        const dbError = err as { code?: string; message?: string };
+
+        if (dbError.code === "23505") {
+          return res.status(409).json({ message: "Email already registered. Please sign in." });
+        }
+
+        if (dbError.code === "42703") {
+          return res.status(500).json({
+            message: "Database schema is outdated. Run database migration and redeploy.",
+          });
+        }
+
+        console.error("Register failed:", err);
+        res.status(500).json({
+          message: dbError.message || "Unable to create user right now. Please try again.",
+        });
       }
     }
   });
