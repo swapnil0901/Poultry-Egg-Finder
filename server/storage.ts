@@ -334,6 +334,9 @@ export class MemoryStorage implements IStorage {
   }
 }
 
-export const storage: IStorage = process.env.DATABASE_URL
-  ? new DatabaseStorage()
-  : new MemoryStorage();
+const shouldUseMemoryStorage =
+  !process.env.DATABASE_URL && process.env.NODE_ENV !== "production";
+
+export const storage: IStorage = shouldUseMemoryStorage
+  ? new MemoryStorage()
+  : new DatabaseStorage();
