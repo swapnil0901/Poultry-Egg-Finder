@@ -57,6 +57,7 @@ export const api = {
       path: '/api/eggs' as const,
       input: insertEggCollectionSchema.extend({
         eggsCollected: z.coerce.number(),
+        brokenEggs: z.coerce.number().default(0),
       }),
       responses: {
         201: z.custom<typeof eggCollection.$inferSelect>(),
@@ -188,7 +189,78 @@ export const api = {
         200: z.object({ response: z.string() }),
         500: errorSchemas.internal,
       }
-    }
+    },
+    diseaseDetection: {
+      method: 'POST' as const,
+      path: '/api/ai/disease-detection' as const,
+      input: z.object({
+        imageBase64: z.string().min(1),
+        notes: z.string().optional(),
+      }),
+      responses: {
+        200: z.object({
+          disease: z.string(),
+          confidence: z.number(),
+          severity: z.enum(['low', 'moderate', 'high']),
+          suggestedTreatment: z.string(),
+          observations: z.string(),
+        }),
+        400: errorSchemas.validation,
+      }
+    },
+    eggPrediction: {
+      method: 'POST' as const,
+      path: '/api/ai/egg-prediction' as const,
+      input: z.object({
+        days: z.coerce.number().int().min(7).max(90).default(30),
+      }),
+      responses: {
+        200: z.object({
+          daysUsed: z.number(),
+          expectedTomorrow: z.number(),
+          expectedThisWeek: z.number(),
+          trend: z.enum(['increasing', 'stable', 'decreasing']),
+          confidence: z.number(),
+          insights: z.string(),
+        }),
+        400: errorSchemas.validation,
+      }
+    },
+    feedRecommendation: {
+      method: 'POST' as const,
+      path: '/api/ai/feed-recommendation' as const,
+      input: z.object({
+        farmSize: z.coerce.number().int().min(1),
+        avgWeightKg: z.coerce.number().min(0.2).max(5).default(1.8),
+        weather: z.enum(['normal', 'hot', 'cold']).default('normal'),
+      }),
+      responses: {
+        200: z.object({
+          morningFeedKg: z.number(),
+          eveningFeedKg: z.number(),
+          waterLiters: z.number(),
+          recommendation: z.string(),
+        }),
+        400: errorSchemas.validation,
+      }
+    },
+    smartReport: {
+      method: 'POST' as const,
+      path: '/api/ai/smart-report' as const,
+      input: z.object({
+        period: z.enum(['weekly', 'monthly']).default('weekly'),
+      }),
+      responses: {
+        200: z.object({
+          title: z.string(),
+          summary: z.string(),
+          highlights: z.array(z.string()),
+          risks: z.array(z.string()),
+          actions: z.array(z.string()),
+        }),
+        400: errorSchemas.validation,
+      }
+    },
   }
 };
 

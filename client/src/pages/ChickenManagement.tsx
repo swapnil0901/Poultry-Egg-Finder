@@ -17,7 +17,7 @@ export default function ChickenManagement() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await createRecord({
-      date: new Date(),
+      date: new Date().toISOString().split('T')[0],
       totalChickens: Number(formData.totalChickens),
       healthy: Number(formData.healthy),
       sick: Number(formData.sick),

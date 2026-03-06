@@ -17,7 +17,7 @@ export default function Expenses() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await createRecord({
-      date: new Date(formData.date),
+      date: formData.date,
       expenseType: formData.expenseType,
       amount: Number(formData.amount),
       description: formData.description

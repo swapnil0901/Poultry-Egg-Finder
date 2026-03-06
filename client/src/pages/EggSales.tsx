@@ -23,7 +23,7 @@ export default function EggSales() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await createSale({
-      date: new Date(formData.date),
+      date: formData.date,
       customerName: formData.customerName,
       eggsSold: Number(formData.eggsSold),
       pricePerEgg: Number(formData.pricePerEgg),

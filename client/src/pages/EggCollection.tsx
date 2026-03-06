@@ -9,18 +9,25 @@ export default function EggCollection() {
   const { data: eggs, isLoading } = useEggs();
   const { mutateAsync: createEgg, isPending } = useCreateEgg();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], eggsCollected: '', shed: '', notes: '' });
+  const [formData, setFormData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    eggsCollected: '',
+    brokenEggs: '',
+    shed: '',
+    notes: ''
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await createEgg({
-      date: new Date(formData.date),
+      date: formData.date,
       eggsCollected: Number(formData.eggsCollected),
+      brokenEggs: Number(formData.brokenEggs || 0),
       shed: formData.shed,
       notes: formData.notes
     });
     setIsModalOpen(false);
-    setFormData({ date: new Date().toISOString().split('T')[0], eggsCollected: '', shed: '', notes: '' });
+    setFormData({ date: new Date().toISOString().split('T')[0], eggsCollected: '', brokenEggs: '', shed: '', notes: '' });
   };
 
   return (
@@ -34,7 +41,7 @@ export default function EggCollection() {
       {isLoading ? (
         <div className="p-8 text-center text-muted-foreground">Loading records...</div>
       ) : (
-        <DataTable headers={["Date", "Shed", "Eggs Collected", "Notes"]}>
+        <DataTable headers={["Date", "Shed", "Eggs Collected", "Broken Eggs", "Notes"]}>
           {eggs?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(record => (
             <tr key={record.id} className="hover:bg-black/5 transition-colors">
               <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
@@ -44,11 +51,12 @@ export default function EggCollection() {
                 </span>
               </td>
               <td className="px-6 py-4 font-display font-bold text-lg">{record.eggsCollected.toLocaleString()}</td>
+              <td className="px-6 py-4 font-bold text-warning">{(record.brokenEggs ?? 0).toLocaleString()}</td>
               <td className="px-6 py-4 text-muted-foreground">{record.notes || '-'}</td>
             </tr>
           ))}
           {(!eggs || eggs.length === 0) && (
-            <tr><td colSpan={4} className="px-6 py-12 text-center text-muted-foreground">No records found.</td></tr>
+            <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No records found.</td></tr>
           )}
         </DataTable>
       )}
@@ -62,6 +70,10 @@ export default function EggCollection() {
           <Input 
             label="Eggs Collected" type="number" min="0" required placeholder="e.g. 5000"
             value={formData.eggsCollected} onChange={e => setFormData({...formData, eggsCollected: e.target.value})}
+          />
+          <Input
+            label="Broken Eggs" type="number" min="0" placeholder="e.g. 12"
+            value={formData.brokenEggs} onChange={e => setFormData({...formData, brokenEggs: e.target.value})}
           />
           <Input 
             label="Shed Name/Number" required placeholder="e.g. Shed A"

@@ -80,9 +80,80 @@ export function useAIChat() {
         method: 'POST',
         body: JSON.stringify({ message }),
       });
-      if (!res.ok) throw new Error('AI request failed');
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.message || 'AI request failed');
+      }
       const data = await res.json();
       return api.ai.chat.responses[200].parse(data);
+    }
+  });
+}
+
+export function useAIDiseaseDetection() {
+  return useMutation({
+    mutationFn: async (payload: z.infer<typeof api.ai.diseaseDetection.input>) => {
+      const res = await fetchWithAuth(api.ai.diseaseDetection.path, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.message || 'Disease detection failed');
+      }
+      const data = await res.json();
+      return api.ai.diseaseDetection.responses[200].parse(data);
+    }
+  });
+}
+
+export function useAIEggPrediction() {
+  return useMutation({
+    mutationFn: async (payload: z.infer<typeof api.ai.eggPrediction.input>) => {
+      const res = await fetchWithAuth(api.ai.eggPrediction.path, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.message || 'Egg prediction failed');
+      }
+      const data = await res.json();
+      return api.ai.eggPrediction.responses[200].parse(data);
+    }
+  });
+}
+
+export function useAIFeedRecommendation() {
+  return useMutation({
+    mutationFn: async (payload: z.infer<typeof api.ai.feedRecommendation.input>) => {
+      const res = await fetchWithAuth(api.ai.feedRecommendation.path, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.message || 'Feed recommendation failed');
+      }
+      const data = await res.json();
+      return api.ai.feedRecommendation.responses[200].parse(data);
+    }
+  });
+}
+
+export function useAISmartReport() {
+  return useMutation({
+    mutationFn: async (payload: z.infer<typeof api.ai.smartReport.input>) => {
+      const res = await fetchWithAuth(api.ai.smartReport.path, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => null);
+        throw new Error(errorBody?.message || 'Smart report generation failed');
+      }
+      const data = await res.json();
+      return api.ai.smartReport.responses[200].parse(data);
     }
   });
 }

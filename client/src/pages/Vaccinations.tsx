@@ -18,9 +18,9 @@ export default function Vaccinations() {
     e.preventDefault();
     await createRecord({
       vaccineName: formData.vaccineName,
-      date: new Date(formData.date),
+      date: formData.date,
       chickensVaccinated: Number(formData.chickensVaccinated),
-      nextVaccination: new Date(formData.nextVaccination)
+      nextVaccination: formData.nextVaccination
     });
     setIsModalOpen(false);
     setFormData({ vaccineName: '', date: new Date().toISOString().split('T')[0], chickensVaccinated: '', nextVaccination: '' });

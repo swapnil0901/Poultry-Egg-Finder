@@ -19,7 +19,7 @@ export default function Inventory() {
     await createRecord({
       itemName: formData.itemName,
       quantity: Number(formData.quantity),
-      purchaseDate: new Date(formData.purchaseDate),
+      purchaseDate: formData.purchaseDate,
       supplier: formData.supplier,
       cost: Number(formData.cost)
     });

@@ -17,7 +17,7 @@ export default function DiseaseTracker() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await createRecord({
-      date: new Date(formData.date),
+      date: formData.date,
       diseaseName: formData.diseaseName,
       chickensAffected: Number(formData.chickensAffected),
       treatment: formData.treatment
