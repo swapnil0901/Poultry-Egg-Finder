@@ -4,7 +4,7 @@ import * as schema from "@shared/schema";
 import "dotenv/config";
 
 const { Pool } = pg;
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = process.env.NODE_ENV !== "development";
 const databaseUrl = process.env.DATABASE_URL;
 
 if (isProduction && !databaseUrl) {
