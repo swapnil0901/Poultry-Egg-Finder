@@ -5,10 +5,16 @@ import "dotenv/config";
 
 const { Pool } = pg;
 const isProduction = process.env.NODE_ENV !== "development";
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl =
+  process.env.DATABASE_URL ||
+  process.env.DATABASE_INTERNAL_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.PGURL;
 
 if (isProduction && !databaseUrl) {
-  throw new Error("DATABASE_URL is required in production.");
+  throw new Error(
+    "DATABASE_URL is required in production. Set DATABASE_URL (or DATABASE_INTERNAL_URL/POSTGRES_URL).",
+  );
 }
 
 const shouldUseSsl =
