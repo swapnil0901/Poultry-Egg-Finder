@@ -1,17 +1,17 @@
-import { MongoClient, type Db } from "mongodb";
 import "dotenv/config";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { sql } from "drizzle-orm";
+import { Pool } from "pg";
+import * as schema from "@shared/schema";
 
-type CounterDocument = {
-  _id: string;
-  seq: number;
-};
+type AppDatabase = NodePgDatabase<typeof schema>;
 
-function resolveMongoUrl(): string | undefined {
+function resolveDatabaseUrl(): string | undefined {
   const candidates: Array<[string, string | undefined]> = [
-    ["MONGODB_URI", process.env.MONGODB_URI],
-    ["MONGO_URL", process.env.MONGO_URL],
     ["DATABASE_URL", process.env.DATABASE_URL],
     ["DATABASE_INTERNAL_URL", process.env.DATABASE_INTERNAL_URL],
+    ["POSTGRES_URL", process.env.POSTGRES_URL],
+    ["PG_URL", process.env.PG_URL],
   ];
 
   for (const [key, rawValue] of candidates) {
@@ -19,7 +19,7 @@ function resolveMongoUrl(): string | undefined {
     if (!value) continue;
 
     try {
-      return validateMongoUrl(value);
+      return validatePostgresUrl(value);
     } catch (error) {
       console.warn(`Ignoring invalid ${key}: ${(error as Error).message}`);
     }
@@ -28,126 +28,197 @@ function resolveMongoUrl(): string | undefined {
   return undefined;
 }
 
-function validateMongoUrl(mongoUrl: string): string {
+function validatePostgresUrl(databaseUrl: string): string {
   let parsed: URL;
 
   try {
-    parsed = new URL(mongoUrl);
+    parsed = new URL(databaseUrl);
   } catch {
-    throw new Error("Invalid MongoDB URL format. Expected a full mongodb:// or mongodb+srv:// URL.");
+    throw new Error(
+      "Invalid PostgreSQL URL format. Expected a full postgres:// or postgresql:// URL.",
+    );
   }
 
-  if (parsed.protocol !== "mongodb:" && parsed.protocol !== "mongodb+srv:") {
-    throw new Error("Invalid MongoDB protocol. Use mongodb:// or mongodb+srv://.");
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    throw new Error("Invalid PostgreSQL protocol. Use postgres:// or postgresql://.");
   }
 
   if (!parsed.hostname || parsed.hostname.toLowerCase() === "base") {
     throw new Error(
-      'Invalid MongoDB host "base". Set MONGODB_URI to your real MongoDB URL.',
+      'Invalid PostgreSQL host "base". Set DATABASE_URL to your real PostgreSQL URL.',
     );
   }
 
-  return mongoUrl;
+  return databaseUrl;
 }
 
-function resolveDatabaseName(mongoUrl: string | undefined): string {
-  const explicit = process.env.MONGODB_DB?.trim() || process.env.MONGO_DB?.trim();
-  if (explicit) {
-    return explicit;
+function shouldUseSsl(databaseUrl: string): boolean | { rejectUnauthorized: false } {
+  const mode = process.env.PGSSLMODE?.toLowerCase();
+  if (mode === "disable") {
+    return false;
   }
 
-  if (!mongoUrl) {
-    return "poultry_egg_finder";
+  if (mode === "require") {
+    return { rejectUnauthorized: false };
   }
 
   try {
-    const parsed = new URL(mongoUrl);
-    const path = parsed.pathname.replace(/^\//, "");
-    return path || "poultry_egg_finder";
+    const parsed = new URL(databaseUrl);
+    const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+    if (localHosts.has(parsed.hostname.toLowerCase())) {
+      return false;
+    }
   } catch {
-    return "poultry_egg_finder";
+    // Ignore URL parsing errors here, validation already ran.
   }
+
+  return { rejectUnauthorized: false };
 }
 
 const isProduction = process.env.NODE_ENV !== "development";
-const mongoUrl = resolveMongoUrl();
-const databaseName = resolveDatabaseName(mongoUrl);
+const databaseUrl = resolveDatabaseUrl();
 
-if (isProduction && !mongoUrl) {
+if (isProduction && !databaseUrl) {
   throw new Error(
-    "MONGODB_URI is required in production. Set MONGODB_URI (or MONGO_URL).",
+    "DATABASE_URL is required in production. Set DATABASE_URL (or DATABASE_INTERNAL_URL).",
   );
 }
 
-const client = mongoUrl
-  ? new MongoClient(mongoUrl, {
-      maxPoolSize: 10,
-      minPoolSize: 0,
-      serverSelectionTimeoutMS: 10_000,
+const pool = databaseUrl
+  ? new Pool({
+      connectionString: databaseUrl,
+      max: 10,
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000,
+      ssl: shouldUseSsl(databaseUrl),
     })
   : null;
 
-const dbPromise: Promise<Db> | null = client
-  ? client.connect().then((connectedClient) => connectedClient.db(databaseName))
-  : null;
+export const db: AppDatabase | null = pool ? drizzle(pool, { schema }) : null;
+export const isPostgresConfigured = Boolean(databaseUrl);
 
-let indexPromise: Promise<void> | null = null;
+let initPromise: Promise<void> | null = null;
 
-async function ensureIndexes(db: Db): Promise<void> {
-  if (!indexPromise) {
-    indexPromise = (async () => {
-      await Promise.all([
-        db.collection("users").createIndex({ id: 1 }, { unique: true }),
-        db.collection("users").createIndex({ email: 1 }, { unique: true }),
-        db.collection("egg_collection").createIndex({ id: 1 }, { unique: true }),
-        db.collection("egg_sales").createIndex({ id: 1 }, { unique: true }),
-        db.collection("chicken_management").createIndex({ id: 1 }, { unique: true }),
-        db.collection("disease_records").createIndex({ id: 1 }, { unique: true }),
-        db.collection("inventory").createIndex({ id: 1 }, { unique: true }),
-        db.collection("expenses").createIndex({ id: 1 }, { unique: true }),
-        db.collection("vaccinations").createIndex({ id: 1 }, { unique: true }),
-        db.collection("conversations").createIndex({ id: 1 }, { unique: true }),
-        db.collection("messages").createIndex({ id: 1 }, { unique: true }),
-        db.collection("messages").createIndex({ conversationId: 1, createdAt: 1 }),
-      ]);
-    })().catch((error) => {
-      indexPromise = null;
+async function initializeSchema(database: AppDatabase): Promise<void> {
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      role TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS messages (
+      id SERIAL PRIMARY KEY,
+      conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS egg_collection (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      eggs_collected INTEGER NOT NULL,
+      broken_eggs INTEGER NOT NULL DEFAULT 0,
+      shed TEXT NOT NULL,
+      notes TEXT
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS egg_sales (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      eggs_sold INTEGER NOT NULL,
+      price_per_egg NUMERIC NOT NULL,
+      customer_name TEXT NOT NULL,
+      total_amount NUMERIC NOT NULL,
+      sale_type TEXT NOT NULL DEFAULT 'Egg'
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS chicken_management (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL DEFAULT CURRENT_DATE,
+      total_chickens INTEGER NOT NULL,
+      healthy INTEGER NOT NULL,
+      sick INTEGER NOT NULL,
+      dead INTEGER NOT NULL,
+      chicks INTEGER NOT NULL
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS disease_records (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      disease_name TEXT NOT NULL,
+      chickens_affected INTEGER NOT NULL,
+      treatment TEXT NOT NULL
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS inventory (
+      id SERIAL PRIMARY KEY,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      purchase_date DATE NOT NULL,
+      supplier TEXT NOT NULL,
+      cost NUMERIC NOT NULL
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS expenses (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      expense_type TEXT NOT NULL,
+      amount NUMERIC NOT NULL,
+      description TEXT
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS vaccinations (
+      id SERIAL PRIMARY KEY,
+      vaccine_name TEXT NOT NULL,
+      date DATE NOT NULL,
+      chickens_vaccinated INTEGER NOT NULL,
+      next_vaccination DATE NOT NULL
+    )
+  `);
+}
+
+export async function ensureDatabaseReady(): Promise<void> {
+  if (!db) {
+    throw new Error(
+      "PostgreSQL is not configured. Set DATABASE_URL to enable database storage.",
+    );
+  }
+
+  if (!initPromise) {
+    initPromise = initializeSchema(db).catch((error) => {
+      initPromise = null;
       throw error;
     });
   }
 
-  await indexPromise;
-}
-
-export const isMongoConfigured = Boolean(mongoUrl);
-
-export async function getMongoDb(): Promise<Db | null> {
-  if (!dbPromise) {
-    return null;
-  }
-
-  const db = await dbPromise;
-  await ensureIndexes(db);
-  return db;
-}
-
-export async function getMongoDbOrThrow(): Promise<Db> {
-  const db = await getMongoDb();
-  if (!db) {
-    throw new Error("MongoDB is not configured. Set MONGODB_URI to enable database storage.");
-  }
-  return db;
-}
-
-export async function getNextSequence(name: string): Promise<number> {
-  const db = await getMongoDbOrThrow();
-  const counters = db.collection<CounterDocument>("counters");
-
-  const result = await counters.findOneAndUpdate(
-    { _id: name },
-    { $inc: { seq: 1 } },
-    { upsert: true, returnDocument: "after" },
-  );
-
-  return result?.seq ?? 1;
+  await initPromise;
 }

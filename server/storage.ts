@@ -1,5 +1,14 @@
-import { getMongoDbOrThrow, getNextSequence, isMongoConfigured } from "./db";
+import { desc, eq } from "drizzle-orm";
+import { db, ensureDatabaseReady, isPostgresConfigured } from "./db";
 import {
+  users,
+  eggCollection,
+  eggSales,
+  chickenManagement,
+  diseaseRecords,
+  inventory,
+  expenses,
+  vaccinations,
   type User,
   type EggCollection,
   type EggSales,
@@ -13,8 +22,6 @@ import {
 import { z } from "zod";
 import { api } from "@shared/routes";
 
-type MongoDocument<T> = T & { _id?: unknown };
-
 function toDateOnly(value: string | Date | undefined): string {
   if (!value) {
     return new Date().toISOString().split("T")[0];
@@ -25,11 +32,6 @@ function toDateOnly(value: string | Date | undefined): string {
 function toNumber(value: unknown, fallback = 0): number {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
-}
-
-function stripMongoId<T extends { _id?: unknown }>(document: T): Omit<T, "_id"> {
-  const { _id, ...rest } = document;
-  return rest;
 }
 
 export interface IStorage {
@@ -68,205 +70,244 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  private async db() {
-    return getMongoDbOrThrow();
+  private async database() {
+    if (!db) {
+      throw new Error("PostgreSQL is not configured. Set DATABASE_URL to enable database storage.");
+    }
+
+    await ensureDatabaseReady();
+    return db;
   }
 
   // Auth
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const db = await this.db();
-    const user = await db.collection<MongoDocument<User>>("users").findOne({ email });
-    return user ? stripMongoId(user) : undefined;
+    const database = await this.database();
+    const [user] = await database.select().from(users).where(eq(users.email, email)).limit(1);
+    return user;
   }
 
   async getUserById(id: number): Promise<User | undefined> {
-    const db = await this.db();
-    const user = await db.collection<MongoDocument<User>>("users").findOne({ id });
-    return user ? stripMongoId(user) : undefined;
+    const database = await this.database();
+    const [user] = await database.select().from(users).where(eq(users.id, id)).limit(1);
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const db = await this.db();
-    const user: User = {
-      id: await getNextSequence("users"),
-      ...insertUser,
-      createdAt: new Date(),
-    };
-    await db.collection<User>("users").insertOne(user);
+    const database = await this.database();
+    const [user] = await database
+      .insert(users)
+      .values({
+        ...insertUser,
+        createdAt: new Date(),
+      })
+      .returning();
+
+    if (!user) {
+      throw new Error("Failed to create user.");
+    }
+
     return user;
   }
 
   // Egg Collection
   async getEggCollections(): Promise<EggCollection[]> {
-    const db = await this.db();
-    const records = await db
-      .collection<MongoDocument<EggCollection>>("egg_collection")
-      .find({})
-      .sort({ date: -1, id: -1 })
-      .toArray();
-    return records.map(stripMongoId);
+    const database = await this.database();
+    return database
+      .select()
+      .from(eggCollection)
+      .orderBy(desc(eggCollection.date), desc(eggCollection.id));
   }
 
   async createEggCollection(data: z.infer<typeof api.eggCollection.create.input>): Promise<EggCollection> {
-    const db = await this.db();
-    const record: EggCollection = {
-      id: await getNextSequence("egg_collection"),
-      date: toDateOnly(data.date),
-      eggsCollected: toNumber(data.eggsCollected),
-      brokenEggs: toNumber(data.brokenEggs, 0),
-      shed: data.shed,
-      notes: data.notes ?? null,
-    };
-    await db.collection<EggCollection>("egg_collection").insertOne(record);
+    const database = await this.database();
+    const [record] = await database
+      .insert(eggCollection)
+      .values({
+        date: toDateOnly(data.date),
+        eggsCollected: toNumber(data.eggsCollected),
+        brokenEggs: toNumber(data.brokenEggs, 0),
+        shed: data.shed,
+        notes: data.notes ?? null,
+      })
+      .returning();
+
+    if (!record) {
+      throw new Error("Failed to create egg collection record.");
+    }
+
     return record;
   }
 
   // Egg Sales
   async getEggSales(): Promise<EggSales[]> {
-    const db = await this.db();
-    const records = await db
-      .collection<MongoDocument<EggSales>>("egg_sales")
-      .find({})
-      .sort({ date: -1, id: -1 })
-      .toArray();
-    return records.map(stripMongoId);
+    const database = await this.database();
+    return database
+      .select()
+      .from(eggSales)
+      .orderBy(desc(eggSales.date), desc(eggSales.id));
   }
 
   async createEggSales(data: z.infer<typeof api.eggSales.create.input>): Promise<EggSales> {
-    const db = await this.db();
-    const record: EggSales = {
-      id: await getNextSequence("egg_sales"),
-      date: toDateOnly(data.date),
-      eggsSold: toNumber(data.eggsSold),
-      pricePerEgg: data.pricePerEgg.toString(),
-      customerName: data.customerName,
-      totalAmount: data.totalAmount.toString(),
-      saleType: data.saleType ?? "Egg",
-    };
-    await db.collection<EggSales>("egg_sales").insertOne(record);
+    const database = await this.database();
+    const [record] = await database
+      .insert(eggSales)
+      .values({
+        date: toDateOnly(data.date),
+        eggsSold: toNumber(data.eggsSold),
+        pricePerEgg: data.pricePerEgg.toString(),
+        customerName: data.customerName,
+        totalAmount: data.totalAmount.toString(),
+        saleType: data.saleType ?? "Egg",
+      })
+      .returning();
+
+    if (!record) {
+      throw new Error("Failed to create egg sales record.");
+    }
+
     return record;
   }
 
   // Chicken Management
   async getChickenManagement(): Promise<ChickenManagement[]> {
-    const db = await this.db();
-    const records = await db
-      .collection<MongoDocument<ChickenManagement>>("chicken_management")
-      .find({})
-      .sort({ date: -1, id: -1 })
-      .toArray();
-    return records.map(stripMongoId);
+    const database = await this.database();
+    return database
+      .select()
+      .from(chickenManagement)
+      .orderBy(desc(chickenManagement.date), desc(chickenManagement.id));
   }
 
   async createChickenManagement(data: z.infer<typeof api.chickens.create.input>): Promise<ChickenManagement> {
-    const db = await this.db();
-    const record: ChickenManagement = {
-      id: await getNextSequence("chicken_management"),
-      date: toDateOnly(data.date),
-      totalChickens: toNumber(data.totalChickens),
-      healthy: toNumber(data.healthy),
-      sick: toNumber(data.sick),
-      dead: toNumber(data.dead),
-      chicks: toNumber(data.chicks),
-    };
-    await db.collection<ChickenManagement>("chicken_management").insertOne(record);
+    const database = await this.database();
+    const [record] = await database
+      .insert(chickenManagement)
+      .values({
+        date: toDateOnly(data.date),
+        totalChickens: toNumber(data.totalChickens),
+        healthy: toNumber(data.healthy),
+        sick: toNumber(data.sick),
+        dead: toNumber(data.dead),
+        chicks: toNumber(data.chicks),
+      })
+      .returning();
+
+    if (!record) {
+      throw new Error("Failed to create chicken management record.");
+    }
+
     return record;
   }
 
   // Disease Records
   async getDiseaseRecords(): Promise<DiseaseRecord[]> {
-    const db = await this.db();
-    const records = await db
-      .collection<MongoDocument<DiseaseRecord>>("disease_records")
-      .find({})
-      .sort({ date: -1, id: -1 })
-      .toArray();
-    return records.map(stripMongoId);
+    const database = await this.database();
+    return database
+      .select()
+      .from(diseaseRecords)
+      .orderBy(desc(diseaseRecords.date), desc(diseaseRecords.id));
   }
 
   async createDiseaseRecord(data: z.infer<typeof api.diseases.create.input>): Promise<DiseaseRecord> {
-    const db = await this.db();
-    const record: DiseaseRecord = {
-      id: await getNextSequence("disease_records"),
-      date: toDateOnly(data.date),
-      diseaseName: data.diseaseName,
-      chickensAffected: toNumber(data.chickensAffected),
-      treatment: data.treatment,
-    };
-    await db.collection<DiseaseRecord>("disease_records").insertOne(record);
+    const database = await this.database();
+    const [record] = await database
+      .insert(diseaseRecords)
+      .values({
+        date: toDateOnly(data.date),
+        diseaseName: data.diseaseName,
+        chickensAffected: toNumber(data.chickensAffected),
+        treatment: data.treatment,
+      })
+      .returning();
+
+    if (!record) {
+      throw new Error("Failed to create disease record.");
+    }
+
     return record;
   }
 
   // Inventory
   async getInventory(): Promise<Inventory[]> {
-    const db = await this.db();
-    const records = await db
-      .collection<MongoDocument<Inventory>>("inventory")
-      .find({})
-      .sort({ purchaseDate: -1, id: -1 })
-      .toArray();
-    return records.map(stripMongoId);
+    const database = await this.database();
+    return database
+      .select()
+      .from(inventory)
+      .orderBy(desc(inventory.purchaseDate), desc(inventory.id));
   }
 
   async createInventory(data: z.infer<typeof api.inventory.create.input>): Promise<Inventory> {
-    const db = await this.db();
-    const record: Inventory = {
-      id: await getNextSequence("inventory"),
-      itemName: data.itemName,
-      quantity: toNumber(data.quantity),
-      purchaseDate: toDateOnly(data.purchaseDate),
-      supplier: data.supplier,
-      cost: data.cost.toString(),
-    };
-    await db.collection<Inventory>("inventory").insertOne(record);
+    const database = await this.database();
+    const [record] = await database
+      .insert(inventory)
+      .values({
+        itemName: data.itemName,
+        quantity: toNumber(data.quantity),
+        purchaseDate: toDateOnly(data.purchaseDate),
+        supplier: data.supplier,
+        cost: data.cost.toString(),
+      })
+      .returning();
+
+    if (!record) {
+      throw new Error("Failed to create inventory record.");
+    }
+
     return record;
   }
 
   // Expenses
   async getExpenses(): Promise<Expense[]> {
-    const db = await this.db();
-    const records = await db
-      .collection<MongoDocument<Expense>>("expenses")
-      .find({})
-      .sort({ date: -1, id: -1 })
-      .toArray();
-    return records.map(stripMongoId);
+    const database = await this.database();
+    return database
+      .select()
+      .from(expenses)
+      .orderBy(desc(expenses.date), desc(expenses.id));
   }
 
   async createExpense(data: z.infer<typeof api.expenses.create.input>): Promise<Expense> {
-    const db = await this.db();
-    const record: Expense = {
-      id: await getNextSequence("expenses"),
-      date: toDateOnly(data.date),
-      expenseType: data.expenseType,
-      amount: data.amount.toString(),
-      description: data.description ?? null,
-    };
-    await db.collection<Expense>("expenses").insertOne(record);
+    const database = await this.database();
+    const [record] = await database
+      .insert(expenses)
+      .values({
+        date: toDateOnly(data.date),
+        expenseType: data.expenseType,
+        amount: data.amount.toString(),
+        description: data.description ?? null,
+      })
+      .returning();
+
+    if (!record) {
+      throw new Error("Failed to create expense record.");
+    }
+
     return record;
   }
 
   // Vaccinations
   async getVaccinations(): Promise<Vaccination[]> {
-    const db = await this.db();
-    const records = await db
-      .collection<MongoDocument<Vaccination>>("vaccinations")
-      .find({})
-      .sort({ date: -1, id: -1 })
-      .toArray();
-    return records.map(stripMongoId);
+    const database = await this.database();
+    return database
+      .select()
+      .from(vaccinations)
+      .orderBy(desc(vaccinations.date), desc(vaccinations.id));
   }
 
   async createVaccination(data: z.infer<typeof api.vaccinations.create.input>): Promise<Vaccination> {
-    const db = await this.db();
-    const record: Vaccination = {
-      id: await getNextSequence("vaccinations"),
-      vaccineName: data.vaccineName,
-      date: toDateOnly(data.date),
-      chickensVaccinated: toNumber(data.chickensVaccinated),
-      nextVaccination: toDateOnly(data.nextVaccination),
-    };
-    await db.collection<Vaccination>("vaccinations").insertOne(record);
+    const database = await this.database();
+    const [record] = await database
+      .insert(vaccinations)
+      .values({
+        vaccineName: data.vaccineName,
+        date: toDateOnly(data.date),
+        chickensVaccinated: toNumber(data.chickensVaccinated),
+        nextVaccination: toDateOnly(data.nextVaccination),
+      })
+      .returning();
+
+    if (!record) {
+      throw new Error("Failed to create vaccination record.");
+    }
+
     return record;
   }
 }
@@ -442,7 +483,7 @@ export class MemoryStorage implements IStorage {
 }
 
 const shouldUseMemoryStorage =
-  !isMongoConfigured && process.env.NODE_ENV !== "production";
+  !isPostgresConfigured && process.env.NODE_ENV !== "production";
 
 export const storage: IStorage = shouldUseMemoryStorage
   ? new MemoryStorage()

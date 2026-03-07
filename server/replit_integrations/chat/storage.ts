@@ -1,12 +1,11 @@
-import { getMongoDbOrThrow, getNextSequence } from "../../db";
-import { type Conversation, type Message } from "@shared/schema";
-
-type MongoDocument<T> = T & { _id?: unknown };
-
-function stripMongoId<T extends { _id?: unknown }>(document: T): Omit<T, "_id"> {
-  const { _id, ...rest } = document;
-  return rest;
-}
+import { asc, desc, eq } from "drizzle-orm";
+import { db, ensureDatabaseReady } from "../../db";
+import {
+  conversations,
+  messages,
+  type Conversation,
+  type Message,
+} from "@shared/schema";
 
 export interface IChatStorage {
   getConversation(id: number): Promise<Conversation | undefined>;
@@ -17,62 +16,81 @@ export interface IChatStorage {
   createMessage(conversationId: number, role: string, content: string): Promise<Message>;
 }
 
+async function getDbOrThrow() {
+  if (!db) {
+    throw new Error("PostgreSQL is not configured. Set DATABASE_URL to enable chat storage.");
+  }
+
+  await ensureDatabaseReady();
+  return db;
+}
+
 export const chatStorage: IChatStorage = {
   async getConversation(id: number) {
-    const db = await getMongoDbOrThrow();
-    const conversation = await db
-      .collection<MongoDocument<Conversation>>("conversations")
-      .findOne({ id });
-    return conversation ? stripMongoId(conversation) : undefined;
+    const database = await getDbOrThrow();
+    const [conversation] = await database
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, id))
+      .limit(1);
+    return conversation;
   },
 
   async getAllConversations() {
-    const db = await getMongoDbOrThrow();
-    const conversations = await db
-      .collection<MongoDocument<Conversation>>("conversations")
-      .find({})
-      .sort({ createdAt: -1, id: -1 })
-      .toArray();
-    return conversations.map(stripMongoId);
+    const database = await getDbOrThrow();
+    return database
+      .select()
+      .from(conversations)
+      .orderBy(desc(conversations.createdAt), desc(conversations.id));
   },
 
   async createConversation(title: string) {
-    const db = await getMongoDbOrThrow();
-    const conversation: Conversation = {
-      id: await getNextSequence("conversations"),
-      title,
-      createdAt: new Date(),
-    };
-    await db.collection<Conversation>("conversations").insertOne(conversation);
+    const database = await getDbOrThrow();
+    const [conversation] = await database
+      .insert(conversations)
+      .values({
+        title,
+        createdAt: new Date(),
+      })
+      .returning();
+
+    if (!conversation) {
+      throw new Error("Failed to create conversation.");
+    }
+
     return conversation;
   },
 
   async deleteConversation(id: number) {
-    const db = await getMongoDbOrThrow();
-    await db.collection("messages").deleteMany({ conversationId: id });
-    await db.collection("conversations").deleteOne({ id });
+    const database = await getDbOrThrow();
+    await database.delete(conversations).where(eq(conversations.id, id));
   },
 
   async getMessagesByConversation(conversationId: number) {
-    const db = await getMongoDbOrThrow();
-    const messages = await db
-      .collection<MongoDocument<Message>>("messages")
-      .find({ conversationId })
-      .sort({ createdAt: 1, id: 1 })
-      .toArray();
-    return messages.map(stripMongoId);
+    const database = await getDbOrThrow();
+    return database
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(asc(messages.createdAt), asc(messages.id));
   },
 
   async createMessage(conversationId: number, role: string, content: string) {
-    const db = await getMongoDbOrThrow();
-    const message: Message = {
-      id: await getNextSequence("messages"),
-      conversationId,
-      role,
-      content,
-      createdAt: new Date(),
-    };
-    await db.collection<Message>("messages").insertOne(message);
+    const database = await getDbOrThrow();
+    const [message] = await database
+      .insert(messages)
+      .values({
+        conversationId,
+        role,
+        content,
+        createdAt: new Date(),
+      })
+      .returning();
+
+    if (!message) {
+      throw new Error("Failed to create message.");
+    }
+
     return message;
   },
 };

@@ -12,18 +12,18 @@ Make sure your latest code is in the GitHub repo.
 - Build command: `npm install --include=dev && npm run build`
 - Start command: `npm run start`
 
-## 3. Add MongoDB
-1. In Railway project, click `+ New` -> `Database` -> `MongoDB`
-2. Open the MongoDB service and copy the connection string
+## 3. Add PostgreSQL
+1. In Railway project, click `+ New` -> `Database` -> `PostgreSQL`
+2. Open the PostgreSQL service and copy the connection string
 
 ## 4. Set Environment Variables (Web Service)
 Add these keys in Railway service Variables:
 
-- `MONGODB_URI` = your Railway MongoDB URL (starts with `mongodb://...` or `mongodb+srv://...`)
+- `DATABASE_URL` = your Railway PostgreSQL URL (starts with `postgres://...` or `postgresql://...`)
 - `NODE_ENV` = `production`
 
 Optional:
-- `MONGODB_DB` = database name override (if you do not want to use the name in URI)
+- `DATABASE_INTERNAL_URL` = Railway internal database URL (if using private networking)
 - `OPENAI_API_KEY` = your OpenAI key
 - `OPENAI_BASE_URL` = `https://api.openai.com/v1` (or your provider URL)
 
@@ -35,6 +35,6 @@ After deploy, open the generated Railway domain and test:
 - egg records insert
 
 ## 6. Common Error Fix
-If you see `MongoDB is not configured` or connection errors:
-- Your `MONGODB_URI` value is missing or invalid.
-- Replace it with the full MongoDB URL from Railway Variables.
+If you see `PostgreSQL is not configured` or connection errors:
+- Your `DATABASE_URL` value is missing or invalid.
+- Replace it with the full PostgreSQL URL from Railway Variables.
