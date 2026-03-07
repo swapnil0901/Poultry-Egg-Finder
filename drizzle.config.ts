@@ -38,7 +38,7 @@ function validateDatabaseUrl(databaseUrl: string): string {
 
   if (!parsed.hostname || parsed.hostname.toLowerCase() === "base") {
     throw new Error(
-      'Invalid DATABASE_URL host "base". Set DATABASE_URL to your real Render Postgres URL.',
+      'Invalid DATABASE_URL host "base". Set DATABASE_URL to your real Postgres URL.',
     );
   }
 

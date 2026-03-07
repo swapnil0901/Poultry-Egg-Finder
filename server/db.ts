@@ -40,11 +40,28 @@ function validateDatabaseUrl(databaseUrl: string): string {
 
   if (!parsed.hostname || parsed.hostname.toLowerCase() === "base") {
     throw new Error(
-      'Invalid DATABASE_URL host "base". Set DATABASE_URL to your real Render Postgres URL.',
+      'Invalid DATABASE_URL host "base". Set DATABASE_URL to your real Postgres URL.',
     );
   }
 
   return databaseUrl;
+}
+
+function resolveSslPreference(databaseUrl: string | undefined, isProduction: boolean): boolean {
+  const pgSsl = process.env.PGSSL?.trim().toLowerCase();
+  if (pgSsl === "true") return true;
+  if (pgSsl === "false") return false;
+  if (!databaseUrl) return false;
+
+  const parsed = new URL(databaseUrl);
+  const sslMode = parsed.searchParams.get("sslmode")?.toLowerCase();
+  if (sslMode && sslMode !== "disable") {
+    return true;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const isLocalHost = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  return isProduction && !isLocalHost;
 }
 
 const { Pool } = pg;
@@ -57,9 +74,7 @@ if (isProduction && !databaseUrl) {
   );
 }
 
-const shouldUseSsl =
-  (databaseUrl?.includes("render.com") ?? false) ||
-  process.env.PGSSL === "true";
+const shouldUseSsl = resolveSslPreference(databaseUrl, isProduction);
 
 export const pool = databaseUrl
   ? new Pool({
