@@ -140,7 +140,7 @@ export default function Dashboard() {
           <StatCard title="Remaining Eggs" value={remainingEggs} icon={Egg} color="bg-gradient-to-br from-accent to-accent/80 text-accent-foreground shadow-lg shadow-accent/20" trend="+12%" />
         </motion.div>
         <motion.div variants={itemVariants}>
-          <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} icon={IndianRupee} color="bg-gradient-to-br from-success to-success/80 text-white shadow-lg shadow-success/20" trend="+5.2%" />
+          <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} icon={IndianRupee} color="bg-gradient-to-br from-success/25 to-success/10 text-success border border-success/40 shadow-lg shadow-success/15" trend="+5.2%" />
         </motion.div>
         <motion.div variants={itemVariants}>
           <StatCard title="Net Profit" value={formatCurrency(netProfit)} icon={Package} color="bg-gradient-to-br from-primary to-primary/80 text-white shadow-lg shadow-primary/20" trend="Healthy" />
