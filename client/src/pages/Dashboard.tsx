@@ -39,6 +39,13 @@ function toDateKey(value: string | Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function toChartLabel(value: string | Date): string {
+  return parseDateValue(value).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
 export default function Dashboard() {
   const { data: eggs } = useEggs();
   const { data: sales } = useSales();
@@ -55,51 +62,58 @@ export default function Dashboard() {
   const remainingEggs = totalEggs - totalSold;
   const netProfit = totalRevenue - totalExpenses;
 
-  // Chart Data: always render a true 7-day window.
-  const last7Days = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(today);
-      date.setDate(today.getDate() - (6 - index));
-      return date;
-    });
-  }, []);
-
   const eggProductionData = useMemo(() => {
-    const eggsByDate = new Map<string, number>();
+    const eggsByDate = new Map<string, { date: Date; eggs: number }>();
 
     for (const record of eggs ?? []) {
       const key = toDateKey(record.date);
-      eggsByDate.set(key, (eggsByDate.get(key) ?? 0) + toNumber(record.eggsCollected));
+      const current = eggsByDate.get(key);
+      eggsByDate.set(key, {
+        date: parseDateValue(record.date),
+        eggs: (current?.eggs ?? 0) + toNumber(record.eggsCollected),
+      });
     }
 
-    return last7Days.map((date) => {
-      const key = toDateKey(date);
-      return {
-        name: date.toLocaleDateString("en-IN", { weekday: "short" }),
-        eggs: eggsByDate.get(key) ?? 0,
-      };
-    });
-  }, [eggs, last7Days]);
+    return Array.from(eggsByDate.values())
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .slice(-7)
+      .map((entry) => ({
+        name: toChartLabel(entry.date),
+        eggs: entry.eggs,
+      }));
+  }, [eggs]);
 
   const revenueData = useMemo(() => {
-    const revenueByDate = new Map<string, number>();
+    const revenueByDate = new Map<string, { date: Date; amount: number }>();
 
     for (const record of sales ?? []) {
       const key = toDateKey(record.date);
-      revenueByDate.set(key, (revenueByDate.get(key) ?? 0) + toNumber(record.totalAmount));
+      const current = revenueByDate.get(key);
+      revenueByDate.set(key, {
+        date: parseDateValue(record.date),
+        amount: (current?.amount ?? 0) + toNumber(record.totalAmount),
+      });
     }
 
-    return last7Days.map((date) => {
-      const key = toDateKey(date);
-      return {
-        name: date.toLocaleDateString("en-IN", { weekday: "short" }),
-        amount: revenueByDate.get(key) ?? 0,
-      };
-    });
-  }, [sales, last7Days]);
+    return Array.from(revenueByDate.values())
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .slice(-7)
+      .map((entry) => ({
+        name: toChartLabel(entry.date),
+        amount: entry.amount,
+      }));
+  }, [sales]);
+
+  const hasEggProductionData = eggProductionData.length > 0;
+  const hasRevenueData = revenueData.length > 0;
+
+  const eggProductionChartData = hasEggProductionData
+    ? eggProductionData
+    : [{ name: "No Data", eggs: 0 }];
+
+  const revenueChartData = hasRevenueData
+    ? revenueData
+    : [{ name: "No Data", amount: 0 }];
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -120,7 +134,7 @@ export default function Dashboard() {
       transition: { duration: 0.4, ease: "easeOut" },
     },
   };
-
+  
   return (
     <AppLayout>
       <PageHeader
@@ -163,7 +177,7 @@ export default function Dashboard() {
             <h3 className="text-lg font-bold font-display mb-6">7-Day Egg Production</h3>
             <div className="flex-1 min-h-0">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={eggProductionData}>
+                <AreaChart data={eggProductionChartData}>
                   <defs>
                     <linearGradient id="colorEggs" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
@@ -181,6 +195,9 @@ export default function Dashboard() {
                 </AreaChart>
               </ResponsiveContainer>
             </div>
+            {!hasEggProductionData && (
+              <p className="text-sm text-muted-foreground mt-4">No egg records available yet.</p>
+            )}
           </Card>
         </motion.div>
 
@@ -189,7 +206,7 @@ export default function Dashboard() {
             <h3 className="text-lg font-bold font-display mb-6">Recent Revenue</h3>
             <div className="flex-1 min-h-0">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={revenueData}>
+                <BarChart data={revenueChartData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--foreground))", opacity: 0.7 }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--foreground))", opacity: 0.7 }} dx={-10} tickFormatter={(val) => `Rs ${val}`} />
@@ -202,6 +219,9 @@ export default function Dashboard() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            {!hasRevenueData && (
+              <p className="text-sm text-muted-foreground mt-4">No sales records available yet.</p>
+            )}
           </Card>
         </motion.div>
       </motion.div>
