@@ -1,7 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { fetchWithAuth } from "@/lib/auth-client";
+import { parseJsonResponse } from "@/lib/queryClient";
 import { z } from "zod";
+
+async function getErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const errorBody = await parseJsonResponse<{ message?: string }>(res);
+    return errorBody?.message || fallback;
+  } catch (error) {
+    return error instanceof Error ? error.message : fallback;
+  }
+}
 
 // Helper generator for standard CRUD hooks
 function createResourceHooks<T, I>(
@@ -16,8 +26,8 @@ function createResourceHooks<T, I>(
       queryKey: [queryKey],
       queryFn: async () => {
         const res = await fetchWithAuth(listPath);
-        if (!res.ok) throw new Error(`Failed to fetch ${queryKey}`);
-        const data = await res.json();
+        if (!res.ok) throw new Error(await getErrorMessage(res, `Failed to fetch ${queryKey}`));
+        const data = await parseJsonResponse<unknown>(res);
         return listSchema.parse(data);
       }
     }),
@@ -29,8 +39,8 @@ function createResourceHooks<T, I>(
             method: 'POST',
             body: JSON.stringify(data),
           });
-          if (!res.ok) throw new Error(`Failed to create ${queryKey}`);
-          return createResponseSchema.parse(await res.json());
+          if (!res.ok) throw new Error(await getErrorMessage(res, `Failed to create ${queryKey}`));
+          return createResponseSchema.parse(await parseJsonResponse<unknown>(res));
         },
         onSuccess: () => qc.invalidateQueries({ queryKey: [queryKey] })
       });
@@ -83,8 +93,8 @@ export function useDashboardAnalytics() {
     queryKey: ['dashboard-analytics'],
     queryFn: async () => {
       const res = await fetchWithAuth(api.dashboard.analytics.path);
-      if (!res.ok) throw new Error('Failed to fetch dashboard analytics');
-      return api.dashboard.analytics.responses[200].parse(await res.json());
+      if (!res.ok) throw new Error(await getErrorMessage(res, 'Failed to fetch dashboard analytics'));
+      return api.dashboard.analytics.responses[200].parse(await parseJsonResponse<unknown>(res));
     },
     refetchInterval: 60_000,
     staleTime: 30_000,
@@ -99,10 +109,9 @@ export function useAIChat() {
         body: JSON.stringify({ message }),
       });
       if (!res.ok) {
-        const errorBody = await res.json().catch(() => null);
-        throw new Error(errorBody?.message || 'AI request failed');
+        throw new Error(await getErrorMessage(res, 'AI request failed'));
       }
-      const data = await res.json();
+      const data = await parseJsonResponse<unknown>(res);
       return api.ai.chat.responses[200].parse(data);
     }
   });
@@ -116,10 +125,9 @@ export function useAIDiseaseDetection() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const errorBody = await res.json().catch(() => null);
-        throw new Error(errorBody?.message || 'Disease detection failed');
+        throw new Error(await getErrorMessage(res, 'Disease detection failed'));
       }
-      const data = await res.json();
+      const data = await parseJsonResponse<unknown>(res);
       return api.ai.diseaseDetection.responses[200].parse(data);
     }
   });
@@ -133,10 +141,9 @@ export function useAIEggPrediction() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const errorBody = await res.json().catch(() => null);
-        throw new Error(errorBody?.message || 'Egg prediction failed');
+        throw new Error(await getErrorMessage(res, 'Egg prediction failed'));
       }
-      const data = await res.json();
+      const data = await parseJsonResponse<unknown>(res);
       return api.ai.eggPrediction.responses[200].parse(data);
     }
   });
@@ -150,10 +157,9 @@ export function useAIFeedRecommendation() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const errorBody = await res.json().catch(() => null);
-        throw new Error(errorBody?.message || 'Feed recommendation failed');
+        throw new Error(await getErrorMessage(res, 'Feed recommendation failed'));
       }
-      const data = await res.json();
+      const data = await parseJsonResponse<unknown>(res);
       return api.ai.feedRecommendation.responses[200].parse(data);
     }
   });
@@ -167,10 +173,9 @@ export function useAISmartReport() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        const errorBody = await res.json().catch(() => null);
-        throw new Error(errorBody?.message || 'Smart report generation failed');
+        throw new Error(await getErrorMessage(res, 'Smart report generation failed'));
       }
-      const data = await res.json();
+      const data = await parseJsonResponse<unknown>(res);
       return api.ai.smartReport.responses[200].parse(data);
     }
   });

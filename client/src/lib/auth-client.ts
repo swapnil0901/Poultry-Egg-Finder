@@ -1,3 +1,5 @@
+import { toApiUrl } from "@/lib/api-url";
+
 // Custom fetch wrapper to inject JWT token
 export async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('token');
@@ -17,7 +19,7 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
     requestInit.cache = 'no-store';
   }
 
-  const res = await fetch(url, requestInit);
+  const res = await fetch(toApiUrl(url), requestInit);
   
   if (res.status === 401 && window.location.pathname !== '/auth') {
     localStorage.removeItem('token');

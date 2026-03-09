@@ -38,3 +38,12 @@ After deploy, open the generated Railway domain and test:
 If you see `PostgreSQL is not configured` or connection errors:
 - Your `DATABASE_URL` value is missing or invalid.
 - Replace it with the full PostgreSQL URL from Railway Variables.
+
+## 7. If Frontend Is On Netlify
+This app calls backend APIs like `/api/...`, so a static Netlify deploy needs backend wiring:
+
+1. In Netlify environment variables, set:
+   - `VITE_API_BASE_URL` = your Railway backend URL (for example `https://your-app.up.railway.app`)
+2. In Railway environment variables, set:
+   - `CORS_ORIGINS` = your Netlify site URL (for example `https://your-site.netlify.app`)
+3. Redeploy both Railway and Netlify.
