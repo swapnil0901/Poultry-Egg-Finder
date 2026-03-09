@@ -49,7 +49,15 @@ type FarmSnapshot = {
   totalRevenue: number;
   totalExpenses: number;
   netProfit: number;
-  latestChicken: Awaited<ReturnType<typeof storage.getChickenManagement>>[number] | undefined;
+  latestChicken:
+    | {
+        totalChickens: number;
+        healthy: number;
+        sick: number;
+        dead: number;
+        chicks: number;
+      }
+    | undefined;
   latestDisease: Awaited<ReturnType<typeof storage.getDiseaseRecords>>[number] | undefined;
   nextVaccination: Awaited<ReturnType<typeof storage.getVaccinations>>[number] | undefined;
   overdueVaccinations: number;
@@ -58,6 +66,13 @@ type FarmSnapshot = {
 function toNumber(value: unknown): number {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
+}
+
+function toDateOnly(value: string | Date): string {
+  if (value instanceof Date) {
+    return value.toISOString().split("T")[0];
+  }
+  return new Date(value).toISOString().split("T")[0];
 }
 
 function formatRupees(value: number): string {
@@ -166,6 +181,29 @@ async function buildFarmSnapshot(): Promise<FarmSnapshot> {
     (sum, record) => sum + toNumber(record.amount),
     0,
   );
+  const chickenByDate = new Map<
+    string,
+    { totalChickens: number; healthy: number; sick: number; dead: number; chicks: number }
+  >();
+  for (const record of chickens) {
+    const key = toDateOnly(record.date);
+    const current = chickenByDate.get(key) ?? {
+      totalChickens: 0,
+      healthy: 0,
+      sick: 0,
+      dead: 0,
+      chicks: 0,
+    };
+    current.totalChickens += toNumber(record.totalChickens);
+    current.healthy += toNumber(record.healthy);
+    current.sick += toNumber(record.sick);
+    current.dead += toNumber(record.dead);
+    current.chicks += toNumber(record.chicks);
+    chickenByDate.set(key, current);
+  }
+  const latestChickenDate = chickens[0] ? toDateOnly(chickens[0].date) : null;
+  const latestChicken =
+    latestChickenDate !== null ? chickenByDate.get(latestChickenDate) : undefined;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -193,7 +231,7 @@ async function buildFarmSnapshot(): Promise<FarmSnapshot> {
     totalRevenue,
     totalExpenses,
     netProfit: totalRevenue - totalExpenses,
-    latestChicken: chickens[0],
+    latestChicken,
     latestDisease: diseases[0],
     nextVaccination,
     overdueVaccinations,
@@ -1020,13 +1058,15 @@ async function seedDatabase() {
         healthy: 980,
         sick: 15,
         dead: 5,
-        chicks: 200
+        chicks: 200,
+        chickenType: "Pure",
       });
       
       await storage.createEggCollection({
         date: today,
         eggsCollected: 850,
         brokenEggs: 12,
+        chickenType: "Pure",
         shed: "Shed A",
         notes: "Normal collection"
       });
@@ -1036,6 +1076,7 @@ async function seedDatabase() {
         eggsSold: 800,
         pricePerEgg: 5,
         customerName: "Local Market",
+        chickenType: "Pure",
         saleType: "Egg",
         totalAmount: 4000
       });

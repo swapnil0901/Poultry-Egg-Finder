@@ -135,9 +135,14 @@ async function initializeSchema(database: AppDatabase): Promise<void> {
       date DATE NOT NULL,
       eggs_collected INTEGER NOT NULL,
       broken_eggs INTEGER NOT NULL DEFAULT 0,
+      chicken_type TEXT NOT NULL DEFAULT 'Pure',
       shed TEXT NOT NULL,
       notes TEXT
     )
+  `);
+  await database.execute(sql`
+    ALTER TABLE egg_collection
+    ADD COLUMN IF NOT EXISTS chicken_type TEXT NOT NULL DEFAULT 'Pure'
   `);
 
   await database.execute(sql`
@@ -148,8 +153,13 @@ async function initializeSchema(database: AppDatabase): Promise<void> {
       price_per_egg NUMERIC NOT NULL,
       customer_name TEXT NOT NULL,
       total_amount NUMERIC NOT NULL,
+      chicken_type TEXT NOT NULL DEFAULT 'Pure',
       sale_type TEXT NOT NULL DEFAULT 'Egg'
     )
+  `);
+  await database.execute(sql`
+    ALTER TABLE egg_sales
+    ADD COLUMN IF NOT EXISTS chicken_type TEXT NOT NULL DEFAULT 'Pure'
   `);
 
   await database.execute(sql`
@@ -160,8 +170,13 @@ async function initializeSchema(database: AppDatabase): Promise<void> {
       healthy INTEGER NOT NULL,
       sick INTEGER NOT NULL,
       dead INTEGER NOT NULL,
-      chicks INTEGER NOT NULL
+      chicks INTEGER NOT NULL,
+      chicken_type TEXT NOT NULL DEFAULT 'Pure'
     )
+  `);
+  await database.execute(sql`
+    ALTER TABLE chicken_management
+    ADD COLUMN IF NOT EXISTS chicken_type TEXT NOT NULL DEFAULT 'Pure'
   `);
 
   await database.execute(sql`

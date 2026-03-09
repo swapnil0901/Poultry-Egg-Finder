@@ -32,6 +32,7 @@ export const eggCollection = pgTable("egg_collection", {
   date: date("date").notNull(),
   eggsCollected: integer("eggs_collected").notNull(),
   brokenEggs: integer("broken_eggs").notNull().default(0),
+  chickenType: text("chicken_type").notNull().default("Pure"),
   shed: text("shed").notNull(),
   notes: text("notes"),
 });
@@ -43,6 +44,7 @@ export const eggSales = pgTable("egg_sales", {
   pricePerEgg: numeric("price_per_egg").notNull(),
   customerName: text("customer_name").notNull(),
   totalAmount: numeric("total_amount").notNull(),
+  chickenType: text("chicken_type").notNull().default("Pure"),
   saleType: text("sale_type").notNull().default("Egg"), // 'Egg' | 'Tray'
 });
 
@@ -54,6 +56,7 @@ export const chickenManagement = pgTable("chicken_management", {
   sick: integer("sick").notNull(),
   dead: integer("dead").notNull(),
   chicks: integer("chicks").notNull(),
+  chickenType: text("chicken_type").notNull().default("Pure"),
 });
 
 export const diseaseRecords = pgTable("disease_records", {

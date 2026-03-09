@@ -119,6 +119,7 @@ export const api = {
       input: insertEggCollectionSchema.extend({
         eggsCollected: z.coerce.number(),
         brokenEggs: z.coerce.number().default(0),
+        chickenType: z.enum(["Pure", "Broiler"]).default("Pure"),
       }),
       responses: {
         201: z.custom<typeof eggCollection.$inferSelect>(),
@@ -139,6 +140,7 @@ export const api = {
         eggsSold: z.coerce.number(),
         pricePerEgg: z.union([z.string(), z.number()]),
         totalAmount: z.union([z.string(), z.number()]),
+        chickenType: z.enum(["Pure", "Broiler"]).default("Pure"),
       }),
       responses: {
         201: z.custom<typeof eggSales.$inferSelect>(),
@@ -161,6 +163,7 @@ export const api = {
         sick: z.coerce.number(),
         dead: z.coerce.number(),
         chicks: z.coerce.number(),
+        chickenType: z.enum(["Pure", "Broiler"]).default("Pure"),
       }),
       responses: {
         201: z.custom<typeof chickenManagement.$inferSelect>(),

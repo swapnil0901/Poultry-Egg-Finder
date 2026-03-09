@@ -1,9 +1,15 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
 import { Button, Modal, Input, DataTable, Select } from "@/components/ui-kit";
 import { useSales, useCreateSale } from "@/hooks/use-poultry";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { Plus } from "lucide-react";
+
+type ChickenType = "Pure" | "Broiler";
+
+function normalizeChickenType(value: string | undefined): ChickenType {
+  return value === "Broiler" ? "Broiler" : "Pure";
+}
 
 export default function EggSales() {
   const { data: sales, isLoading } = useSales();
@@ -15,8 +21,23 @@ export default function EggSales() {
     customerName: '',
     eggsSold: '', 
     pricePerEgg: '',
-    saleType: 'Egg'
+    saleType: 'Egg',
+    chickenType: "Pure" as ChickenType,
   });
+
+  const sortedSales = useMemo(
+    () =>
+      [...(sales ?? [])].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      ),
+    [sales],
+  );
+  const pureSales = sortedSales.filter(
+    (record) => normalizeChickenType(record.chickenType) === "Pure",
+  );
+  const broilerSales = sortedSales.filter(
+    (record) => normalizeChickenType(record.chickenType) === "Broiler",
+  );
 
   const totalAmount = (Number(formData.eggsSold) || 0) * (Number(formData.pricePerEgg) || 0);
 
@@ -28,10 +49,18 @@ export default function EggSales() {
       eggsSold: Number(formData.eggsSold),
       pricePerEgg: Number(formData.pricePerEgg),
       totalAmount: totalAmount,
-      saleType: formData.saleType
+      saleType: formData.saleType,
+      chickenType: formData.chickenType,
     });
     setIsModalOpen(false);
-    setFormData({ date: new Date().toISOString().split('T')[0], customerName: '', eggsSold: '', pricePerEgg: '', saleType: 'Egg' });
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      customerName: '',
+      eggsSold: '',
+      pricePerEgg: '',
+      saleType: 'Egg',
+      chickenType: "Pure",
+    });
   };
 
   return (
@@ -45,25 +74,53 @@ export default function EggSales() {
       {isLoading ? (
         <div className="p-8 text-center text-muted-foreground">Loading records...</div>
       ) : (
-        <DataTable headers={["Date", "Customer", "Type", "Quantity", "Price", "Total Amount"]}>
-          {sales?.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(record => (
-            <tr key={record.id} className="hover:bg-black/5 transition-colors">
-              <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
-              <td className="px-6 py-4 font-semibold">{record.customerName}</td>
-              <td className="px-6 py-4">
-                <span className="px-3 py-1 bg-accent/20 text-accent-foreground rounded-full text-xs font-bold uppercase tracking-wider">
-                  {record.saleType}
-                </span>
-              </td>
-              <td className="px-6 py-4 font-display font-bold">{record.eggsSold.toLocaleString()}</td>
-              <td className="px-6 py-4 text-muted-foreground">{formatCurrency(record.pricePerEgg as string)}</td>
-              <td className="px-6 py-4 font-bold text-success text-lg">{formatCurrency(record.totalAmount as string)}</td>
-            </tr>
-          ))}
-          {(!sales || sales.length === 0) && (
-            <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No sales recorded yet.</td></tr>
-          )}
-        </DataTable>
+        <div className="space-y-8">
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold font-display text-primary">Pure Chicken Sales</h3>
+            <DataTable headers={["Date", "Customer", "Type", "Quantity", "Price", "Total Amount"]}>
+              {pureSales.map(record => (
+                <tr key={record.id} className="hover:bg-black/5 transition-colors">
+                  <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
+                  <td className="px-6 py-4 font-semibold">{record.customerName}</td>
+                  <td className="px-6 py-4">
+                    <span className="px-3 py-1 bg-accent/20 text-accent-foreground rounded-full text-xs font-bold uppercase tracking-wider">
+                      {record.saleType}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 font-display font-bold">{record.eggsSold.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{formatCurrency(record.pricePerEgg as string)}</td>
+                  <td className="px-6 py-4 font-bold text-success text-lg">{formatCurrency(record.totalAmount as string)}</td>
+                </tr>
+              ))}
+              {pureSales.length === 0 && (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No pure chicken sales yet.</td></tr>
+              )}
+            </DataTable>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold font-display text-primary">Broiler Chicken Sales</h3>
+            <DataTable headers={["Date", "Customer", "Type", "Quantity", "Price", "Total Amount"]}>
+              {broilerSales.map(record => (
+                <tr key={record.id} className="hover:bg-black/5 transition-colors">
+                  <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
+                  <td className="px-6 py-4 font-semibold">{record.customerName}</td>
+                  <td className="px-6 py-4">
+                    <span className="px-3 py-1 bg-accent/20 text-accent-foreground rounded-full text-xs font-bold uppercase tracking-wider">
+                      {record.saleType}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 font-display font-bold">{record.eggsSold.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-muted-foreground">{formatCurrency(record.pricePerEgg as string)}</td>
+                  <td className="px-6 py-4 font-bold text-success text-lg">{formatCurrency(record.totalAmount as string)}</td>
+                </tr>
+              ))}
+              {broilerSales.length === 0 && (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No broiler chicken sales yet.</td></tr>
+              )}
+            </DataTable>
+          </section>
+        </div>
       )}
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Record New Sale">
@@ -76,6 +133,14 @@ export default function EggSales() {
             label="Customer Name" required placeholder="e.g. Fresh Mart"
             value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})}
           />
+          <Select
+            label="Chicken Type"
+            value={formData.chickenType}
+            onChange={e => setFormData({...formData, chickenType: e.target.value as ChickenType})}
+          >
+            <option value="Pure">Pure Chicken</option>
+            <option value="Broiler">Broiler Chicken</option>
+          </Select>
           <div className="grid grid-cols-2 gap-4">
             <Select label="Sale Unit" value={formData.saleType} onChange={e => setFormData({...formData, saleType: e.target.value})}>
               <option value="Egg">Individual Eggs</option>

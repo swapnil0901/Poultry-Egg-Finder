@@ -168,6 +168,7 @@ export class DatabaseStorage implements IStorage {
         date: toDateOnly(data.date),
         eggsCollected: toNumber(data.eggsCollected),
         brokenEggs: toNumber(data.brokenEggs, 0),
+        chickenType: data.chickenType ?? "Pure",
         shed: data.shed,
         notes: data.notes ?? null,
       })
@@ -199,6 +200,7 @@ export class DatabaseStorage implements IStorage {
         pricePerEgg: data.pricePerEgg.toString(),
         customerName: data.customerName,
         totalAmount: data.totalAmount.toString(),
+        chickenType: data.chickenType ?? "Pure",
         saleType: data.saleType ?? "Egg",
       })
       .returning();
@@ -230,6 +232,7 @@ export class DatabaseStorage implements IStorage {
         sick: toNumber(data.sick),
         dead: toNumber(data.dead),
         chicks: toNumber(data.chicks),
+        chickenType: data.chickenType ?? "Pure",
       })
       .returning();
 
@@ -528,6 +531,7 @@ export class MemoryStorage implements IStorage {
       date: toDateOnly(data.date),
       eggsCollected: Number(data.eggsCollected),
       brokenEggs: Number(data.brokenEggs ?? 0),
+      chickenType: data.chickenType ?? "Pure",
       shed: data.shed,
       notes: data.notes ?? null,
     };
@@ -549,6 +553,7 @@ export class MemoryStorage implements IStorage {
       pricePerEgg: data.pricePerEgg.toString(),
       customerName: data.customerName,
       totalAmount: data.totalAmount.toString(),
+      chickenType: data.chickenType ?? "Pure",
       saleType: data.saleType ?? "Egg",
     };
     this.eggSalesRecords.push(record);
@@ -570,6 +575,7 @@ export class MemoryStorage implements IStorage {
       sick: Number(data.sick),
       dead: Number(data.dead),
       chicks: Number(data.chicks),
+      chickenType: data.chickenType ?? "Pure",
     };
     this.chickenRecords.push(record);
     return record;

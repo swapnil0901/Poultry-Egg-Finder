@@ -480,13 +480,40 @@ export async function buildDashboardAnalytics(
     feedByDate.set(key, current);
   }
 
-  const mortalityByDate = new Map<string, number>();
+  const chickenByDate = new Map<
+    string,
+    {
+      totalChickens: number;
+      healthy: number;
+      sick: number;
+      dead: number;
+      chicks: number;
+    }
+  >();
   for (const record of chickenRecords) {
     const key = toDateOnly(record.date);
-    mortalityByDate.set(key, (mortalityByDate.get(key) ?? 0) + toNumber(record.dead));
+    const current = chickenByDate.get(key) ?? {
+      totalChickens: 0,
+      healthy: 0,
+      sick: 0,
+      dead: 0,
+      chicks: 0,
+    };
+    current.totalChickens += toNumber(record.totalChickens);
+    current.healthy += toNumber(record.healthy);
+    current.sick += toNumber(record.sick);
+    current.dead += toNumber(record.dead);
+    current.chicks += toNumber(record.chicks);
+    chickenByDate.set(key, current);
+  }
+  const mortalityByDate = new Map<string, number>();
+  for (const [key, totals] of Array.from(chickenByDate.entries())) {
+    mortalityByDate.set(key, totals.dead);
   }
 
-  const latestChicken = chickenRecords[0];
+  const latestChickenDate = chickenRecords[0] ? toDateOnly(chickenRecords[0].date) : null;
+  const latestChicken =
+    latestChickenDate !== null ? chickenByDate.get(latestChickenDate) : undefined;
 
   for (const [key, feed] of Array.from(feedByDate.entries())) {
     expenseByDate.set(key, (expenseByDate.get(key) ?? 0) + toNumber(feed.feedCost));
