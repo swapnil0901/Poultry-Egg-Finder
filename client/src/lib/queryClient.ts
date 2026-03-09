@@ -33,9 +33,15 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const headers = new Headers();
+  headers.set("Accept", "application/json");
+  if (data) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const res = await fetch(toApiUrl(url), {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -51,6 +57,9 @@ export function getQueryFn<T>(options: {
   return async ({ queryKey }) => {
     const unauthorizedBehavior = options.on401;
     const res = await fetch(toApiUrl(queryKey.join("/") as string), {
+      headers: {
+        Accept: "application/json",
+      },
       credentials: "include",
     });
 

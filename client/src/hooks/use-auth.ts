@@ -30,7 +30,7 @@ export function useAuth() {
     mutationFn: async (data: z.infer<typeof api.auth.login.input>) => {
       const res = await fetch(toApiUrl(api.auth.login.path), {
         method: api.auth.login.method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(data),
       });
       if (!res.ok) {
@@ -51,7 +51,7 @@ export function useAuth() {
     mutationFn: async (data: z.infer<typeof api.auth.register.input>) => {
       const res = await fetch(toApiUrl(api.auth.register.path), {
         method: api.auth.register.method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(data),
       });
       if (!res.ok) {

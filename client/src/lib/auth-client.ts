@@ -13,6 +13,9 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
   if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'application/json');
+  }
 
   const requestInit: RequestInit = { ...options, headers };
   if (method === 'GET' && !requestInit.cache) {
