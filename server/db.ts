@@ -163,6 +163,27 @@ async function initializeSchema(database: AppDatabase): Promise<void> {
   `);
 
   await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS chicken_sales (
+      id SERIAL PRIMARY KEY,
+      date DATE NOT NULL,
+      chickens_sold INTEGER NOT NULL,
+      price_per_chicken NUMERIC NOT NULL,
+      customer_name TEXT NOT NULL,
+      total_amount NUMERIC NOT NULL,
+      chicken_type TEXT NOT NULL DEFAULT 'Pure',
+      notes TEXT
+    )
+  `);
+  await database.execute(sql`
+    ALTER TABLE chicken_sales
+    ADD COLUMN IF NOT EXISTS chicken_type TEXT NOT NULL DEFAULT 'Pure'
+  `);
+  await database.execute(sql`
+    ALTER TABLE chicken_sales
+    ADD COLUMN IF NOT EXISTS notes TEXT
+  `);
+
+  await database.execute(sql`
     CREATE TABLE IF NOT EXISTS chicken_management (
       id SERIAL PRIMARY KEY,
       date DATE NOT NULL DEFAULT CURRENT_DATE,

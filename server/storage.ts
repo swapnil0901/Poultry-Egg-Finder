@@ -4,6 +4,7 @@ import {
   users,
   eggCollection,
   eggSales,
+  chickenSales,
   chickenManagement,
   diseaseRecords,
   inventory,
@@ -15,6 +16,7 @@ import {
   type User,
   type EggCollection,
   type EggSales,
+  type ChickenSale,
   type ChickenManagement,
   type DiseaseRecord,
   type Inventory,
@@ -76,6 +78,10 @@ export interface IStorage {
   // Egg Sales
   getEggSales(): Promise<EggSales[]>;
   createEggSales(data: z.infer<typeof api.eggSales.create.input>): Promise<EggSales>;
+
+  // Chicken Sales
+  getChickenSales(): Promise<ChickenSale[]>;
+  createChickenSales(data: z.infer<typeof api.chickenSales.create.input>): Promise<ChickenSale>;
 
   // Chicken Management
   getChickenManagement(): Promise<ChickenManagement[]>;
@@ -207,6 +213,37 @@ export class DatabaseStorage implements IStorage {
 
     if (!record) {
       throw new Error("Failed to create egg sales record.");
+    }
+
+    return record;
+  }
+
+  // Chicken Sales
+  async getChickenSales(): Promise<ChickenSale[]> {
+    const database = await this.database();
+    return database
+      .select()
+      .from(chickenSales)
+      .orderBy(desc(chickenSales.date), desc(chickenSales.id));
+  }
+
+  async createChickenSales(data: z.infer<typeof api.chickenSales.create.input>): Promise<ChickenSale> {
+    const database = await this.database();
+    const [record] = await database
+      .insert(chickenSales)
+      .values({
+        date: toDateOnly(data.date),
+        chickensSold: toNumber(data.chickensSold),
+        pricePerChicken: data.pricePerChicken.toString(),
+        customerName: data.customerName,
+        totalAmount: data.totalAmount.toString(),
+        chickenType: data.chickenType ?? "Pure",
+        notes: data.notes ?? null,
+      })
+      .returning();
+
+    if (!record) {
+      throw new Error("Failed to create chicken sales record.");
     }
 
     return record;
@@ -480,6 +517,7 @@ export class MemoryStorage implements IStorage {
   private userId = 1;
   private eggCollectionId = 1;
   private eggSalesId = 1;
+  private chickenSalesId = 1;
   private chickenManagementId = 1;
   private diseaseId = 1;
   private inventoryId = 1;
@@ -492,6 +530,7 @@ export class MemoryStorage implements IStorage {
   private userRecords: User[] = [];
   private eggCollectionRecords: EggCollection[] = [];
   private eggSalesRecords: EggSales[] = [];
+  private chickenSalesRecords: ChickenSale[] = [];
   private chickenRecords: ChickenManagement[] = [];
   private diseaseRecordsList: DiseaseRecord[] = [];
   private inventoryRecords: Inventory[] = [];
@@ -557,6 +596,27 @@ export class MemoryStorage implements IStorage {
       saleType: data.saleType ?? "Egg",
     };
     this.eggSalesRecords.push(record);
+    return record;
+  }
+
+  async getChickenSales(): Promise<ChickenSale[]> {
+    return [...this.chickenSalesRecords].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+  }
+
+  async createChickenSales(data: z.infer<typeof api.chickenSales.create.input>): Promise<ChickenSale> {
+    const record: ChickenSale = {
+      id: this.chickenSalesId++,
+      date: toDateOnly(data.date),
+      chickensSold: Number(data.chickensSold),
+      pricePerChicken: data.pricePerChicken.toString(),
+      customerName: data.customerName,
+      totalAmount: data.totalAmount.toString(),
+      chickenType: data.chickenType ?? "Pure",
+      notes: data.notes ?? null,
+    };
+    this.chickenSalesRecords.push(record);
     return record;
   }
 

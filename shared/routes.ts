@@ -3,6 +3,7 @@ import {
   insertUserSchema, users, 
   insertEggCollectionSchema, eggCollection,
   insertEggSalesSchema, eggSales,
+  insertChickenSalesSchema, chickenSales,
   insertChickenManagementSchema, chickenManagement,
   insertDiseaseRecordsSchema, diseaseRecords,
   insertInventorySchema, inventory,
@@ -78,6 +79,14 @@ const dashboardAnalyticsSchema = z.object({
   alerts: z.array(dashboardAlertSchema),
 });
 
+const publicUserSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  email: z.string().email(),
+  role: z.string(),
+  createdAt: z.union([z.date(), z.string(), z.null()]).optional(),
+});
+
 export const api = {
   auth: {
     login: {
@@ -85,7 +94,7 @@ export const api = {
       path: '/api/auth/login' as const,
       input: z.object({ email: z.string().email(), password: z.string() }),
       responses: {
-        200: z.object({ token: z.string(), user: z.custom<typeof users.$inferSelect>() }),
+        200: z.object({ token: z.string(), user: publicUserSchema }),
         401: errorSchemas.unauthorized,
       },
     },
@@ -94,7 +103,7 @@ export const api = {
       path: '/api/auth/register' as const,
       input: insertUserSchema,
       responses: {
-        201: z.object({ token: z.string(), user: z.custom<typeof users.$inferSelect>() }),
+        201: z.object({ token: z.string(), user: publicUserSchema }),
         400: errorSchemas.validation,
       }
     },
@@ -102,7 +111,7 @@ export const api = {
       method: 'GET' as const,
       path: '/api/auth/me' as const,
       responses: {
-        200: z.custom<typeof users.$inferSelect>(),
+        200: publicUserSchema,
         401: errorSchemas.unauthorized,
       }
     }
@@ -144,6 +153,28 @@ export const api = {
       }),
       responses: {
         201: z.custom<typeof eggSales.$inferSelect>(),
+        400: errorSchemas.validation,
+      }
+    }
+  },
+  chickenSales: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/chicken-sales' as const,
+      responses: { 200: z.array(z.custom<typeof chickenSales.$inferSelect>()) }
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/chicken-sales' as const,
+      input: insertChickenSalesSchema.extend({
+        chickensSold: z.coerce.number(),
+        pricePerChicken: z.union([z.string(), z.number()]),
+        totalAmount: z.union([z.string(), z.number()]),
+        chickenType: z.enum(["Pure", "Broiler"]).default("Pure"),
+        notes: z.string().optional().nullable(),
+      }),
+      responses: {
+        201: z.custom<typeof chickenSales.$inferSelect>(),
         400: errorSchemas.validation,
       }
     }

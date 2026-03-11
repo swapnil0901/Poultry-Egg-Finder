@@ -58,6 +58,11 @@ export const { useList: useSales, useCreate: useCreateSale } = createResourceHoo
   api.eggSales.list.responses[200], api.eggSales.create.responses[201]
 );
 
+export const { useList: useChickenSales, useCreate: useCreateChickenSale } = createResourceHooks<z.infer<typeof api.chickenSales.list.responses[200]>[0], z.infer<typeof api.chickenSales.create.input>>(
+  'chicken-sales', api.chickenSales.list.path, api.chickenSales.create.path,
+  api.chickenSales.list.responses[200], api.chickenSales.create.responses[201]
+);
+
 export const { useList: useChickens, useCreate: useCreateChicken } = createResourceHooks<z.infer<typeof api.chickens.list.responses[200]>[0], z.infer<typeof api.chickens.create.input>>(
   'chickens', api.chickens.list.path, api.chickens.create.path, 
   api.chickens.list.responses[200], api.chickens.create.responses[201]

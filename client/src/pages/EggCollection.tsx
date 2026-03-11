@@ -72,7 +72,7 @@ export default function EggCollection() {
       ) : (
         <div className="space-y-8">
           <section className="space-y-3">
-            <h3 className="text-lg font-bold font-display text-primary">Pure Chicken Egg Collection</h3>
+            <h3 className="text-lg font-bold font-display text-primary">Pure Egg Collection</h3>
             <DataTable headers={["Date", "Shed", "Eggs Collected", "Broken Eggs", "Notes"]}>
               {pureEggs.map(record => (
                 <tr key={record.id} className="hover:bg-black/5 transition-colors">
@@ -88,13 +88,13 @@ export default function EggCollection() {
                 </tr>
               ))}
               {pureEggs.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No pure chicken egg records found.</td></tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No pure egg records found.</td></tr>
               )}
             </DataTable>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold font-display text-primary">Broiler Chicken Egg Collection</h3>
+            <h3 className="text-lg font-bold font-display text-primary">Broiler Egg Collection</h3>
             <DataTable headers={["Date", "Shed", "Eggs Collected", "Broken Eggs", "Notes"]}>
               {broilerEggs.map(record => (
                 <tr key={record.id} className="hover:bg-black/5 transition-colors">
@@ -110,7 +110,7 @@ export default function EggCollection() {
                 </tr>
               ))}
               {broilerEggs.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No broiler chicken egg records found.</td></tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No broiler egg records found.</td></tr>
               )}
             </DataTable>
           </section>
@@ -124,12 +124,12 @@ export default function EggCollection() {
             value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})}
           />
           <Select
-            label="Chicken Type"
+            label="Egg Type"
             value={formData.chickenType}
             onChange={e => setFormData({ ...formData, chickenType: e.target.value as ChickenType })}
           >
-            <option value="Pure">Pure Chicken</option>
-            <option value="Broiler">Broiler Chicken</option>
+            <option value="Pure">Pure Egg</option>
+            <option value="Broiler">Broiler Egg</option>
           </Select>
           <Input 
             label="Eggs Collected" type="number" min="0" required placeholder="e.g. 5000"

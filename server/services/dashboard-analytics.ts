@@ -434,9 +434,10 @@ export async function buildDashboardAnalytics(
   const todayKey = safeIsoDate(today);
   const triggerSms = options?.triggerSms ?? false;
 
-  const [eggRecords, salesRecords, chickenRecords, expenseRecords, feedRecords] = await Promise.all([
+  const [eggRecords, salesRecords, chickenSalesRecords, chickenRecords, expenseRecords, feedRecords] = await Promise.all([
     storage.getEggCollections(),
     storage.getEggSales(),
+    storage.getChickenSales(),
     storage.getChickenManagement(),
     storage.getExpenses(),
     storage.getFeedMetrics(),
@@ -456,6 +457,13 @@ export async function buildDashboardAnalytics(
     const key = toDateOnly(record.date);
     const computed = toNumber(record.totalAmount);
     const fallback = toNumber(record.eggsSold) * toNumber(record.pricePerEgg);
+    const amount = computed > 0 ? computed : fallback;
+    revenueByDate.set(key, (revenueByDate.get(key) ?? 0) + amount);
+  }
+  for (const record of chickenSalesRecords) {
+    const key = toDateOnly(record.date);
+    const computed = toNumber(record.totalAmount);
+    const fallback = toNumber(record.chickensSold) * toNumber(record.pricePerChicken);
     const amount = computed > 0 ? computed : fallback;
     revenueByDate.set(key, (revenueByDate.get(key) ?? 0) + amount);
   }

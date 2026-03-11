@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import EggCollection from "./pages/EggCollection";
 import EggSales from "./pages/EggSales";
+import ChickenSales from "./pages/ChickenSales";
 import ChickenManagement from "./pages/ChickenManagement";
 import DiseaseTracker from "./pages/DiseaseTracker";
 import Inventory from "./pages/Inventory";
@@ -45,6 +46,9 @@ function Router() {
       </Route>
       <Route path="/sales">
         {() => <ProtectedRoute component={EggSales} />}
+      </Route>
+      <Route path="/chicken-sales">
+        {() => <ProtectedRoute component={ChickenSales} />}
       </Route>
       <Route path="/chickens">
         {() => <ProtectedRoute component={ChickenManagement} />}

@@ -48,6 +48,17 @@ export const eggSales = pgTable("egg_sales", {
   saleType: text("sale_type").notNull().default("Egg"), // 'Egg' | 'Tray'
 });
 
+export const chickenSales = pgTable("chicken_sales", {
+  id: serial("id").primaryKey(),
+  date: date("date").notNull(),
+  chickensSold: integer("chickens_sold").notNull(),
+  pricePerChicken: numeric("price_per_chicken").notNull(),
+  customerName: text("customer_name").notNull(),
+  totalAmount: numeric("total_amount").notNull(),
+  chickenType: text("chicken_type").notNull().default("Pure"),
+  notes: text("notes"),
+});
+
 export const chickenManagement = pgTable("chicken_management", {
   id: serial("id").primaryKey(),
   date: date("date").notNull().defaultNow(),
@@ -135,6 +146,7 @@ export const insertConversationSchema = createInsertSchema(conversations).omit({
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 export const insertEggCollectionSchema = createInsertSchema(eggCollection).omit({ id: true });
 export const insertEggSalesSchema = createInsertSchema(eggSales).omit({ id: true });
+export const insertChickenSalesSchema = createInsertSchema(chickenSales).omit({ id: true });
 export const insertChickenManagementSchema = createInsertSchema(chickenManagement).omit({ id: true });
 export const insertDiseaseRecordsSchema = createInsertSchema(diseaseRecords).omit({ id: true });
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true });
@@ -149,6 +161,7 @@ export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type InsertEggCollection = z.infer<typeof insertEggCollectionSchema>;
 export type InsertEggSales = z.infer<typeof insertEggSalesSchema>;
+export type InsertChickenSale = z.infer<typeof insertChickenSalesSchema>;
 export type InsertChickenManagement = z.infer<typeof insertChickenManagementSchema>;
 export type InsertDiseaseRecord = z.infer<typeof insertDiseaseRecordsSchema>;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
@@ -163,6 +176,7 @@ export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type EggCollection = typeof eggCollection.$inferSelect;
 export type EggSales = typeof eggSales.$inferSelect;
+export type ChickenSale = typeof chickenSales.$inferSelect;
 export type ChickenManagement = typeof chickenManagement.$inferSelect;
 export type DiseaseRecord = typeof diseaseRecords.$inferSelect;
 export type Inventory = typeof inventory.$inferSelect;

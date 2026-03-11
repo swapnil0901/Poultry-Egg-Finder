@@ -69,6 +69,28 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+function redactSensitiveBody(path: string, body: unknown) {
+  if (!body || typeof body !== "object") {
+    return body;
+  }
+
+  const cloned = JSON.parse(JSON.stringify(body)) as Record<string, unknown>;
+
+  if (path.startsWith("/api/auth")) {
+    delete cloned.password;
+
+    if (cloned.user && typeof cloned.user === "object") {
+      delete (cloned.user as Record<string, unknown>).password;
+    }
+  }
+
+  if ("token" in cloned) {
+    cloned.token = "[redacted]";
+  }
+
+  return cloned;
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -85,7 +107,7 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        logLine += ` :: ${JSON.stringify(redactSensitiveBody(path, capturedJsonResponse))}`;
       }
 
       log(logLine);

@@ -1,12 +1,13 @@
 import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
 import { Button, Card } from "@/components/ui-kit";
-import { useEggs, useSales, useExpenses } from "@/hooks/use-poultry";
+import { useChickenSales, useEggs, useSales, useExpenses } from "@/hooks/use-poultry";
 import { Download } from "lucide-react";
 import Papa from "papaparse";
 
 export default function Reports() {
   const { data: eggs } = useEggs();
   const { data: sales } = useSales();
+  const { data: chickenSales } = useChickenSales();
   const { data: expenses } = useExpenses();
 
   const exportCSV = (data: any[], filename: string) => {
@@ -28,7 +29,7 @@ export default function Reports() {
         description="Export farm data for accounting and external analysis."
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <Card className="flex flex-col items-center justify-center p-8 text-center hover-lift">
           <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
             <Download size={32} />
@@ -45,6 +46,15 @@ export default function Reports() {
           <h3 className="text-xl font-bold font-display mb-2">Sales Ledger</h3>
           <p className="text-muted-foreground mb-6 text-sm">All sales transactions, customer details, and generated revenue.</p>
           <Button className="w-full" variant="secondary" onClick={() => exportCSV(sales || [], 'egg_sales')}>Export CSV</Button>
+        </Card>
+
+        <Card className="flex flex-col items-center justify-center p-8 text-center hover-lift">
+          <div className="w-16 h-16 bg-info/10 text-info rounded-full flex items-center justify-center mb-4">
+            <Download size={32} />
+          </div>
+          <h3 className="text-xl font-bold font-display mb-2">Chicken Sales</h3>
+          <p className="text-muted-foreground mb-6 text-sm">Live bird sales records with customer, type, quantity, and value.</p>
+          <Button className="w-full" variant="secondary" onClick={() => exportCSV(chickenSales || [], 'chicken_sales')}>Export CSV</Button>
         </Card>
 
         <Card className="flex flex-col items-center justify-center p-8 text-center hover-lift">

@@ -11,6 +11,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/eggs", label: "Egg Collection", icon: Egg },
   { href: "/sales", label: "Egg Sales", icon: IndianRupee },
+  { href: "/chicken-sales", label: "Chicken Sales", icon: IndianRupee },
   { href: "/chickens", label: "Chickens", icon: Bird },
   { href: "/diseases", label: "Health & Disease", icon: ShieldAlert },
   { href: "/inventory", label: "Inventory", icon: Package },

@@ -28,6 +28,7 @@ import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui-kit";
 import {
   useChickens,
+  useChickenSales,
   useDashboardAnalytics,
   useEggs,
   useExpenses,
@@ -123,12 +124,14 @@ function buildDateKeys(today: Date, days: number): string[] {
 function buildFallbackAnalytics({
   eggs,
   sales,
+  chickenSales,
   expenses,
   chickens,
   feedMetrics,
 }: {
   eggs: any[] | undefined;
   sales: any[] | undefined;
+  chickenSales: any[] | undefined;
   expenses: any[] | undefined;
   chickens: any[] | undefined;
   feedMetrics: any[] | undefined;
@@ -150,6 +153,14 @@ function buildFallbackAnalytics({
   for (const record of sales ?? []) {
     const date = toDateKey(record.date);
     const amount = toNumber(record.totalAmount, toNumber(record.eggsSold) * toNumber(record.pricePerEgg));
+    revenueByDate.set(date, (revenueByDate.get(date) ?? 0) + amount);
+  }
+  for (const record of chickenSales ?? []) {
+    const date = toDateKey(record.date);
+    const amount = toNumber(
+      record.totalAmount,
+      toNumber(record.chickensSold) * toNumber(record.pricePerChicken),
+    );
     revenueByDate.set(date, (revenueByDate.get(date) ?? 0) + amount);
   }
 
@@ -341,6 +352,7 @@ export default function Dashboard() {
   const analyticsQuery = useDashboardAnalytics();
   const eggsQuery = useEggs();
   const salesQuery = useSales();
+  const chickenSalesQuery = useChickenSales();
   const expensesQuery = useExpenses();
   const chickensQuery = useChickens();
   const feedMetricsQuery = useFeedMetrics();
@@ -350,11 +362,19 @@ export default function Dashboard() {
       buildFallbackAnalytics({
         eggs: eggsQuery.data,
         sales: salesQuery.data,
+        chickenSales: chickenSalesQuery.data,
         expenses: expensesQuery.data,
         chickens: chickensQuery.data,
         feedMetrics: feedMetricsQuery.data,
       }),
-    [chickensQuery.data, eggsQuery.data, expensesQuery.data, feedMetricsQuery.data, salesQuery.data],
+    [
+      chickenSalesQuery.data,
+      chickensQuery.data,
+      eggsQuery.data,
+      expensesQuery.data,
+      feedMetricsQuery.data,
+      salesQuery.data,
+    ],
   );
 
   const data = analyticsQuery.data ?? fallbackData;

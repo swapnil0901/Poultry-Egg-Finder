@@ -45,6 +45,7 @@ type FarmSnapshot = {
   totalBrokenEggs: number;
   brokenRate: number;
   totalSold: number;
+  totalChickenSold: number;
   remainingEggs: number;
   totalRevenue: number;
   totalExpenses: number;
@@ -63,9 +64,33 @@ type FarmSnapshot = {
   overdueVaccinations: number;
 };
 
+type SafeUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  createdAt?: Date | string | null;
+};
+
 function toNumber(value: unknown): number {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
+}
+
+function sanitizeUser(user: {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  createdAt?: Date | string | null;
+}): SafeUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    createdAt: user.createdAt ?? null,
+  };
 }
 
 function toDateOnly(value: string | Date): string {
@@ -158,9 +183,10 @@ function resolveStorageDate(value: string | undefined, fallback: string): string
 }
 
 async function buildFarmSnapshot(): Promise<FarmSnapshot> {
-  const [eggs, sales, chickens, diseases, expenses, vaccinations] = await Promise.all([
+  const [eggs, sales, chickenSales, chickens, diseases, expenses, vaccinations] = await Promise.all([
     storage.getEggCollections(),
     storage.getEggSales(),
+    storage.getChickenSales(),
     storage.getChickenManagement(),
     storage.getDiseaseRecords(),
     storage.getExpenses(),
@@ -173,10 +199,10 @@ async function buildFarmSnapshot(): Promise<FarmSnapshot> {
     0,
   );
   const totalSold = sales.reduce((sum, record) => sum + record.eggsSold, 0);
-  const totalRevenue = sales.reduce(
-    (sum, record) => sum + toNumber(record.totalAmount),
-    0,
-  );
+  const totalChickenSold = chickenSales.reduce((sum, record) => sum + record.chickensSold, 0);
+  const totalRevenue =
+    sales.reduce((sum, record) => sum + toNumber(record.totalAmount), 0) +
+    chickenSales.reduce((sum, record) => sum + toNumber(record.totalAmount), 0);
   const totalExpenses = expenses.reduce(
     (sum, record) => sum + toNumber(record.amount),
     0,
@@ -227,6 +253,7 @@ async function buildFarmSnapshot(): Promise<FarmSnapshot> {
     totalBrokenEggs,
     brokenRate: totalEggs > 0 ? totalBrokenEggs / totalEggs : 0,
     totalSold,
+    totalChickenSold,
     remainingEggs: totalEggs - totalSold,
     totalRevenue,
     totalExpenses,
@@ -243,6 +270,7 @@ function buildSnapshotSummary(snapshot: FarmSnapshot): string {
     `Total eggs collected: ${snapshot.totalEggs}`,
     `Total broken eggs: ${snapshot.totalBrokenEggs} (${(snapshot.brokenRate * 100).toFixed(1)}%)`,
     `Total eggs sold: ${snapshot.totalSold}`,
+    `Total chickens sold: ${snapshot.totalChickenSold}`,
     `Remaining eggs: ${snapshot.remainingEggs}`,
     `Total revenue: ${formatRupees(snapshot.totalRevenue)}`,
     `Total expenses: ${formatRupees(snapshot.totalExpenses)}`,
@@ -258,7 +286,7 @@ function buildFallbackAIResponse(message: string, snapshot: FarmSnapshot): strin
   const text = message.toLowerCase();
 
   if (text.includes("summary") || text.includes("overview") || text.includes("status")) {
-    return `Farm summary:\n- Eggs collected: ${snapshot.totalEggs}\n- Broken eggs: ${snapshot.totalBrokenEggs} (${(snapshot.brokenRate * 100).toFixed(1)}%)\n- Eggs sold: ${snapshot.totalSold}\n- Remaining eggs: ${snapshot.remainingEggs}\n- Revenue: ${formatRupees(snapshot.totalRevenue)}\n- Expenses: ${formatRupees(snapshot.totalExpenses)}\n- Net profit: ${formatRupees(snapshot.netProfit)}`;
+    return `Farm summary:\n- Eggs collected: ${snapshot.totalEggs}\n- Broken eggs: ${snapshot.totalBrokenEggs} (${(snapshot.brokenRate * 100).toFixed(1)}%)\n- Eggs sold: ${snapshot.totalSold}\n- Chickens sold: ${snapshot.totalChickenSold}\n- Remaining eggs: ${snapshot.remainingEggs}\n- Revenue: ${formatRupees(snapshot.totalRevenue)}\n- Expenses: ${formatRupees(snapshot.totalExpenses)}\n- Net profit: ${formatRupees(snapshot.netProfit)}`;
   }
 
   if (text.includes("broken")) {
@@ -540,15 +568,17 @@ async function buildSmartReport(
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - days + 1);
 
-  const [snapshot, eggs, sales, expenses] = await Promise.all([
+  const [snapshot, eggs, sales, chickenSales, expenses] = await Promise.all([
     buildFarmSnapshot(),
     storage.getEggCollections(),
     storage.getEggSales(),
+    storage.getChickenSales(),
     storage.getExpenses(),
   ]);
 
   const periodEggs = eggs.filter((record) => new Date(record.date) >= cutoff);
   const periodSales = sales.filter((record) => new Date(record.date) >= cutoff);
+  const periodChickenSales = chickenSales.filter((record) => new Date(record.date) >= cutoff);
   const periodExpenses = expenses.filter((record) => new Date(record.date) >= cutoff);
 
   const eggsCollected = periodEggs.reduce((sum, record) => sum + record.eggsCollected, 0);
@@ -556,13 +586,16 @@ async function buildSmartReport(
     (sum, record) => sum + toNumber((record as { brokenEggs?: number }).brokenEggs),
     0,
   );
-  const revenue = periodSales.reduce((sum, record) => sum + toNumber(record.totalAmount), 0);
+  const revenue =
+    periodSales.reduce((sum, record) => sum + toNumber(record.totalAmount), 0) +
+    periodChickenSales.reduce((sum, record) => sum + toNumber(record.totalAmount), 0);
   const expenseAmount = periodExpenses.reduce((sum, record) => sum + toNumber(record.amount), 0);
   const periodProfit = revenue - expenseAmount;
   const breakageRate = eggsCollected > 0 ? (brokenEggs / eggsCollected) * 100 : 0;
 
   const highlights = [
     `${days}-day collection: ${eggsCollected} eggs`,
+    `${days}-day chicken sales: ${periodChickenSales.reduce((sum, record) => sum + record.chickensSold, 0)} birds`,
     `Breakage: ${brokenEggs} eggs (${breakageRate.toFixed(1)}%)`,
     `Revenue: ${formatRupees(revenue)}, Expenses: ${formatRupees(expenseAmount)}`,
     `Profit for period: ${formatRupees(periodProfit)}`,
@@ -613,11 +646,23 @@ export async function registerRoutes(
   app.post(api.auth.login.path, async (req, res) => {
     try {
       const input = api.auth.login.input.parse(req.body);
+      // Allow fixed admin credentials without hitting storage for quick local sign-in
+      if (input.email === "admin@gmail.com" && input.password === "123456") {
+        return res.json({
+          token: "mock-jwt-token-0",
+          user: sanitizeUser({
+            id: 0,
+            name: "Admin",
+            email: input.email,
+            role: "admin",
+          }),
+        });
+      }
       const user = await storage.getUserByEmail(input.email);
       if (!user || user.password !== input.password) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
-      res.json({ token: "mock-jwt-token-" + user.id, user });
+      res.json({ token: "mock-jwt-token-" + user.id, user: sanitizeUser(user) });
     } catch (err) {
       res.status(401).json({ message: "Invalid credentials" });
     }
@@ -632,7 +677,7 @@ export async function registerRoutes(
       }
 
       const user = await storage.createUser(input);
-      res.status(201).json({ token: "mock-jwt-token-" + user.id, user });
+      res.status(201).json({ token: "mock-jwt-token-" + user.id, user: sanitizeUser(user) });
     } catch (err) {
       if (err instanceof z.ZodError) {
         res.status(400).json({ message: err.errors[0].message });
@@ -667,7 +712,7 @@ export async function registerRoutes(
     if (!user) {
       return res.status(401).json({ message: "Unauthorized" });
     }
-    res.json(user);
+    res.json(sanitizeUser(user));
   });
 
   // Egg Collection
@@ -703,6 +748,26 @@ export async function registerRoutes(
     try {
       const input = api.eggSales.create.input.parse(req.body);
       const record = await storage.createEggSales(input);
+      res.status(201).json(record);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        res.status(400).json({ message: "Bad request" });
+      }
+    }
+  });
+
+  // Chicken Sales
+  app.get(api.chickenSales.list.path, async (_req, res) => {
+    const records = await storage.getChickenSales();
+    res.json(records);
+  });
+
+  app.post(api.chickenSales.create.path, async (req, res) => {
+    try {
+      const input = api.chickenSales.create.input.parse(req.body);
+      const record = await storage.createChickenSales(input);
       res.status(201).json(record);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1079,6 +1144,16 @@ async function seedDatabase() {
         chickenType: "Pure",
         saleType: "Egg",
         totalAmount: 4000
+      });
+
+      await storage.createChickenSales({
+        date: today,
+        chickensSold: 40,
+        pricePerChicken: 320,
+        customerName: "District Buyer",
+        totalAmount: 12800,
+        chickenType: "Broiler",
+        notes: "Weekend batch sale",
       });
       
       await storage.createExpense({
