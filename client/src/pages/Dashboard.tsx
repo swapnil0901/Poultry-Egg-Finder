@@ -1,21 +1,15 @@
 import { useEffect, useRef } from "react";
-import { BellRing, Droplets, Flame, Thermometer, Wind } from "lucide-react";
+import { BellRing, Droplets, Thermometer, Wind } from "lucide-react";
 import { Link } from "wouter";
 
 import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
 import { Button, Card } from "@/components/ui-kit";
-import { useDeviceControls, useInstallPrompt, useMonitoringSummary, useSensorMonitoring } from "@/dashboard";
+import { useInstallPrompt, useMonitoringSummary, useSensorMonitoring } from "@/dashboard";
 import { createMonitoringCharts } from "@/charts";
 import { cn } from "@/lib/utils";
 
-const deviceMeta = [
-  { key: "fan", label: "Fan", icon: Wind },
-  { key: "heater", label: "Heater", icon: Flame },
-] as const;
-
 export default function Dashboard() {
   const { sensorData, history, isLoading, error, isOffline, lastUpdatedLabel } = useSensorMonitoring();
-  const { controls, pendingDevice, controlError, toggleDevice } = useDeviceControls(sensorData);
   const summaryCards = useMonitoringSummary(sensorData) as Array<{
     key: string;
     label: string;
@@ -90,18 +84,6 @@ export default function Dashboard() {
           </Card>
         )}
 
-        {controlError && (
-          <Card className="border-destructive/30 bg-destructive/5">
-            <div className="flex items-start gap-3">
-              <BellRing className="mt-0.5 text-destructive" size={18} />
-              <div>
-                <p className="font-semibold">Device control unavailable</p>
-                <p className="text-sm text-muted-foreground">{controlError}</p>
-              </div>
-            </div>
-          </Card>
-        )}
-
         {!isStandalone && (
           <Card className="border-primary/20 bg-primary/5">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -144,7 +126,7 @@ export default function Dashboard() {
           ))}
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.5fr,1fr]">
+        <section>
           <Card className="monitoring-chart-panel">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
@@ -160,26 +142,6 @@ export default function Dashboard() {
               <ChartCard title="Temperature" subtitle="Shed climate" canvasRef={temperatureCanvasRef} />
               <ChartCard title="Humidity" subtitle="Air moisture" canvasRef={humidityCanvasRef} />
               <ChartCard title="Gas Level" subtitle="Ammonia detection" canvasRef={gasCanvasRef} />
-            </div>
-          </Card>
-
-          <Card className="monitoring-device-panel">
-            <div className="mb-4">
-              <p className="monitoring-kicker">Automation Status</p>
-              <h3 className="text-xl font-bold font-display">Devices</h3>
-            </div>
-            <div className="space-y-3">
-              {deviceMeta.map((device) => (
-                <DeviceCard
-                  key={device.key}
-                  label={device.label}
-                  icon={device.icon}
-                  state={controls[device.key]}
-                  isPending={pendingDevice === device.key}
-                  onToggle={toggleDevice}
-                  deviceKey={device.key}
-                />
-              ))}
             </div>
           </Card>
         </section>
@@ -213,59 +175,6 @@ function MetricCard({
       <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
       <p className="mt-3 text-3xl font-bold font-display sm:text-4xl">{value}</p>
     </Card>
-  );
-}
-
-function DeviceCard({
-  deviceKey,
-  label,
-  state,
-  isPending,
-  onToggle,
-  icon: Icon,
-}: {
-  deviceKey: "fan" | "heater";
-  label: string;
-  state: string;
-  isPending: boolean;
-  onToggle: (device: "fan" | "heater", state: "ON" | "OFF") => Promise<void>;
-  icon: any;
-}) {
-  const isOn = state === "ON";
-
-  return (
-    <div className="monitoring-device-card">
-      <div className="flex items-center gap-3">
-        <span className={cn("monitoring-icon", isOn ? "monitoring-icon-ok" : "monitoring-icon-warn")}>
-          <Icon size={18} />
-        </span>
-        <div>
-          <p className="font-semibold">{label}</p>
-          <p className="text-sm text-muted-foreground">Farm automation device</p>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={isOn ? "gradient" : "outline"}
-          disabled={isPending}
-          onClick={() => void onToggle(deviceKey, "ON")}
-        >
-          ON
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={!isOn ? "gradient" : "outline"}
-          disabled={isPending}
-          onClick={() => void onToggle(deviceKey, "OFF")}
-        >
-          OFF
-        </Button>
-        <StatusPill label={isPending ? "Saving..." : state} tone={isPending ? "neutral" : isOn ? "ok" : "warn"} />
-      </div>
-    </div>
   );
 }
 
