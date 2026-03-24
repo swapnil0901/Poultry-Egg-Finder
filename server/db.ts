@@ -2,15 +2,17 @@ import "dotenv/config";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
 import { Pool } from "pg";
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema.js";
 
 type AppDatabase = NodePgDatabase<typeof schema>;
 
 function resolveDatabaseUrl(): string | undefined {
   const candidates: Array<[string, string | undefined]> = [
     ["DATABASE_URL", process.env.DATABASE_URL],
+    ["DATABASE_URL_UNPOOLED", process.env.DATABASE_URL_UNPOOLED],
     ["DATABASE_INTERNAL_URL", process.env.DATABASE_INTERNAL_URL],
     ["POSTGRES_URL", process.env.POSTGRES_URL],
+    ["POSTGRES_URL_NON_POOLING", process.env.POSTGRES_URL_NON_POOLING],
     ["PG_URL", process.env.PG_URL],
   ];
 
@@ -49,6 +51,14 @@ function validatePostgresUrl(databaseUrl: string): string {
     );
   }
 
+  const hostname = parsed.hostname.toLowerCase();
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+  if (process.env.VERCEL && localHosts.has(hostname)) {
+    throw new Error(
+      "Local PostgreSQL URLs are ignored on Vercel. Configure a hosted DATABASE_URL instead.",
+    );
+  }
+
   return databaseUrl;
 }
 
@@ -75,16 +85,9 @@ function shouldUseSsl(databaseUrl: string): boolean | { rejectUnauthorized: fals
   return { rejectUnauthorized: false };
 }
 
-const isProduction = process.env.NODE_ENV !== "development";
 const databaseUrl = resolveDatabaseUrl();
 
-if (isProduction && !databaseUrl) {
-  throw new Error(
-    "DATABASE_URL is required in production. Set DATABASE_URL (or DATABASE_INTERNAL_URL).",
-  );
-}
-
-const pool = databaseUrl
+export const pool = databaseUrl
   ? new Pool({
       connectionString: databaseUrl,
       max: 10,
@@ -201,13 +204,7 @@ async function initializeSchema(database: AppDatabase): Promise<void> {
   `);
 
   await database.execute(sql`
-    CREATE TABLE IF NOT EXISTS disease_records (
-      id SERIAL PRIMARY KEY,
-      date DATE NOT NULL,
-      disease_name TEXT NOT NULL,
-      chickens_affected INTEGER NOT NULL,
-      treatment TEXT NOT NULL
-    )
+    DROP TABLE IF EXISTS disease_records
   `);
 
   await database.execute(sql`
@@ -277,12 +274,69 @@ async function initializeSchema(database: AppDatabase): Promise<void> {
   `);
 
   await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS fcm_tokens (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER,
+      token TEXT NOT NULL UNIQUE,
+      device_label TEXT,
+      user_agent TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await database.execute(sql`
+    ALTER TABLE fcm_tokens
+    ADD COLUMN IF NOT EXISTS device_label TEXT
+  `);
+  await database.execute(sql`
+    ALTER TABLE fcm_tokens
+    ADD COLUMN IF NOT EXISTS user_agent TEXT
+  `);
+  await database.execute(sql`
+    ALTER TABLE fcm_tokens
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE
+  `);
+  await database.execute(sql`
+    ALTER TABLE fcm_tokens
+    ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP NOT NULL DEFAULT NOW()
+  `);
+  await database.execute(sql`
+    ALTER TABLE fcm_tokens
+    ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  `);
+  await database.execute(sql`
+    ALTER TABLE fcm_tokens
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  `);
+
+  await database.execute(sql`
     CREATE TABLE IF NOT EXISTS vaccinations (
       id SERIAL PRIMARY KEY,
       vaccine_name TEXT NOT NULL,
       date DATE NOT NULL,
       chickens_vaccinated INTEGER NOT NULL,
       next_vaccination DATE NOT NULL
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS sensor_data (
+      id SERIAL PRIMARY KEY,
+      temperature FLOAT,
+      humidity FLOAT,
+      ammonia FLOAT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS device_control (
+      id SERIAL PRIMARY KEY,
+      device TEXT NOT NULL,
+      state TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 }

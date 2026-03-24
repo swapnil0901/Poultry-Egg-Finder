@@ -1,6 +1,13 @@
-import { api } from "@shared/routes";
+import { api } from "../../shared/routes.js";
 import { z } from "zod";
 import type { IStorage } from "../storage";
+import {
+  calculateChickenCount,
+  calculateChickenRevenue,
+  calculateEggAvailability,
+  calculateEggRevenue,
+  calculateFeedRemaining,
+} from "./farm-metrics.js";
 
 type DashboardAnalytics = z.infer<typeof api.dashboard.analytics.responses[200]>;
 type DashboardAlert = DashboardAnalytics["alerts"][number];
@@ -13,6 +20,10 @@ const CHART_DAYS = 14;
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeChickenType(value: string | null | undefined): "Pure" | "Broiler" {
+  return value === "Broiler" ? "Broiler" : "Pure";
 }
 
 function toDateOnly(value: string | Date): string {
@@ -444,28 +455,63 @@ export async function buildDashboardAnalytics(
   ]);
 
   const eggsByDate = new Map<string, { eggsProduced: number; brokenEggs: number }>();
+  const eggTotalsByType = new Map<"Pure" | "Broiler", { collected: number; broken: number }>();
   for (const record of eggRecords) {
     const key = toDateOnly(record.date);
     const current = eggsByDate.get(key) ?? { eggsProduced: 0, brokenEggs: 0 };
     current.eggsProduced += toNumber(record.eggsCollected);
     current.brokenEggs += toNumber(record.brokenEggs);
     eggsByDate.set(key, current);
+
+    const type = normalizeChickenType(record.chickenType);
+    const totals = eggTotalsByType.get(type) ?? { collected: 0, broken: 0 };
+    totals.collected += toNumber(record.eggsCollected);
+    totals.broken += toNumber(record.brokenEggs);
+    eggTotalsByType.set(type, totals);
   }
 
+  const eggSalesByDate = new Map<string, { total: number; pure: number; broiler: number }>();
+  const eggSalesTotalsByType = new Map<"Pure" | "Broiler", number>();
   const revenueByDate = new Map<string, number>();
+  const eggSalesRevenueByType = new Map<"Pure" | "Broiler", number>();
+  const chickenSalesRevenueByType = new Map<"Pure" | "Broiler", number>();
   for (const record of salesRecords) {
     const key = toDateOnly(record.date);
+    const current = eggSalesByDate.get(key) ?? { total: 0, pure: 0, broiler: 0 };
+    const eggsSold = toNumber(record.eggsSold);
+    const chickenType = normalizeChickenType(record.chickenType);
+    current.total += eggsSold;
+    if (chickenType === "Broiler") {
+      current.broiler += eggsSold;
+    } else {
+      current.pure += eggsSold;
+    }
+    eggSalesByDate.set(key, current);
+
+    eggSalesTotalsByType.set(
+      chickenType,
+      (eggSalesTotalsByType.get(chickenType) ?? 0) + eggsSold,
+    );
     const computed = toNumber(record.totalAmount);
     const fallback = toNumber(record.eggsSold) * toNumber(record.pricePerEgg);
     const amount = computed > 0 ? computed : fallback;
     revenueByDate.set(key, (revenueByDate.get(key) ?? 0) + amount);
+    eggSalesRevenueByType.set(
+      chickenType,
+      (eggSalesRevenueByType.get(chickenType) ?? 0) + amount,
+    );
   }
   for (const record of chickenSalesRecords) {
     const key = toDateOnly(record.date);
+    const chickenType = normalizeChickenType(record.chickenType);
     const computed = toNumber(record.totalAmount);
     const fallback = toNumber(record.chickensSold) * toNumber(record.pricePerChicken);
     const amount = computed > 0 ? computed : fallback;
     revenueByDate.set(key, (revenueByDate.get(key) ?? 0) + amount);
+    chickenSalesRevenueByType.set(
+      chickenType,
+      (chickenSalesRevenueByType.get(chickenType) ?? 0) + amount,
+    );
   }
 
   const expenseByDate = new Map<string, number>();
@@ -518,10 +564,17 @@ export async function buildDashboardAnalytics(
   for (const [key, totals] of Array.from(chickenByDate.entries())) {
     mortalityByDate.set(key, totals.dead);
   }
-
-  const latestChickenDate = chickenRecords[0] ? toDateOnly(chickenRecords[0].date) : null;
-  const latestChicken =
-    latestChickenDate !== null ? chickenByDate.get(latestChickenDate) : undefined;
+  const sortedChickenRecords = [...chickenRecords].sort((a, b) => {
+    const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+    return dateDiff === 0 ? b.id - a.id : dateDiff;
+  });
+  const latestChickenByType = new Map<"Pure" | "Broiler", number>();
+  for (const record of sortedChickenRecords) {
+    const chickenType = normalizeChickenType(record.chickenType);
+    if (!latestChickenByType.has(chickenType)) {
+      latestChickenByType.set(chickenType, toNumber(record.totalChickens));
+    }
+  }
 
   for (const [key, feed] of Array.from(feedByDate.entries())) {
     expenseByDate.set(key, (expenseByDate.get(key) ?? 0) + toNumber(feed.feedCost));
@@ -541,50 +594,46 @@ export async function buildDashboardAnalytics(
     feedStockKg: feedByDate.get(date)?.feedStockKg ?? 0,
   }));
 
-  const profitAnalysis = dateKeys.map((date) => {
-    const revenue = revenueByDate.get(date) ?? 0;
-    const cost = expenseByDate.get(date) ?? 0;
-    return {
-      date,
-      revenue,
-      cost,
-      profit: revenue - cost,
-    };
-  });
-
   const todayEggs = eggsByDate.get(todayKey)?.eggsProduced ?? 0;
   const todayBroken = eggsByDate.get(todayKey)?.brokenEggs ?? 0;
-  const todayRevenue = revenueByDate.get(todayKey) ?? 0;
-  const todayCost = expenseByDate.get(todayKey) ?? 0;
-  const todayProfit = todayRevenue - todayCost;
+  const todayEggSales = eggSalesByDate.get(todayKey) ?? { total: 0, pure: 0, broiler: 0 };
+  const todayEggsSold = todayEggSales.total;
   const todayFeed = feedByDate.get(todayKey);
   const latestFeedMetric = sortedFeed.length > 0 ? sortedFeed[sortedFeed.length - 1] : null;
   const latestFeedStockKg =
     latestFeedMetric !== null ? toNumber(latestFeedMetric.closingStockKg) : null;
-
-  const month = today.getMonth();
-  const year = today.getFullYear();
-  let monthlyProfit = 0;
-  let yearlyProfit = 0;
-
-  const profitDateKeys = new Set<string>([
-    ...Array.from(revenueByDate.keys()),
-    ...Array.from(expenseByDate.keys()),
+  const [
+    totalEggsAvailable,
+    totalFeedRemaining,
+    totalChickensAvailable,
+    eggRevenue,
+    chickenRevenue,
+  ] = await Promise.all([
+    calculateEggAvailability(storage),
+    calculateFeedRemaining(storage),
+    calculateChickenCount(storage),
+    calculateEggRevenue(storage),
+    calculateChickenRevenue(storage),
   ]);
 
-  for (const date of Array.from(profitDateKeys)) {
-    const parsed = parseDateValue(date);
-    const revenue = revenueByDate.get(date) ?? 0;
-    const cost = expenseByDate.get(date) ?? 0;
-    const profit = revenue - cost;
-
-    if (parsed.getFullYear() === year) {
-      yearlyProfit += profit;
-      if (parsed.getMonth() === month) {
-        monthlyProfit += profit;
-      }
-    }
-  }
+  const pureEggTotals = eggTotalsByType.get("Pure") ?? { collected: 0, broken: 0 };
+  const broilerEggTotals = eggTotalsByType.get("Broiler") ?? { collected: 0, broken: 0 };
+  const pureEggsSoldTotal = eggSalesTotalsByType.get("Pure") ?? 0;
+  const broilerEggsSoldTotal = eggSalesTotalsByType.get("Broiler") ?? 0;
+  const pureEggRevenue = eggSalesRevenueByType.get("Pure") ?? 0;
+  const broilerEggRevenue = eggSalesRevenueByType.get("Broiler") ?? 0;
+  const pureChickensAvailable = latestChickenByType.get("Pure") ?? 0;
+  const broilerChickensAvailable = latestChickenByType.get("Broiler") ?? 0;
+  const pureChickenRevenue = chickenSalesRevenueByType.get("Pure") ?? 0;
+  const broilerChickenRevenue = chickenSalesRevenueByType.get("Broiler") ?? 0;
+  const pureEggsAvailable = Math.max(
+    0,
+    pureEggTotals.collected - pureEggTotals.broken - pureEggsSoldTotal,
+  );
+  const broilerEggsAvailable = Math.max(
+    0,
+    broilerEggTotals.collected - broilerEggTotals.broken - broilerEggsSoldTotal,
+  );
 
   const generatedAlerts = generateAlerts(todayKey, eggsByDate, mortalityByDate, latestFeedStockKg);
   const alerts = await attachAlertStatuses(storage, todayKey, generatedAlerts, triggerSms);
@@ -595,25 +644,28 @@ export async function buildDashboardAnalytics(
       date: todayKey,
       eggsProduced: todayEggs,
       brokenEggs: todayBroken,
-      totalRevenue: todayRevenue,
-      totalCost: todayCost,
-      netProfit: todayProfit,
+      totalEggsAvailable,
+      totalEggsSold: todayEggsSold,
+      pureEggsSold: todayEggSales.pure,
+      broilerEggsSold: todayEggSales.broiler,
+      pureEggsAvailable,
+      broilerEggsAvailable,
+      totalFeedRemaining,
+      totalChickensAvailable,
+      eggRevenue,
+      chickenRevenue,
+      pureChickensAvailable,
+      broilerChickensAvailable,
+      pureEggRevenue,
+      broilerEggRevenue,
+      pureChickenRevenue,
+      broilerChickenRevenue,
       feedConsumedKg: todayFeed?.feedConsumedKg ?? 0,
-      feedStockKg: todayFeed?.feedStockKg ?? (latestFeedStockKg ?? 0),
       mortalityCount: mortalityByDate.get(todayKey) ?? 0,
-      healthyChickens: toNumber(latestChicken?.healthy),
-      sickChickens: toNumber(latestChicken?.sick),
-      newChicks: toNumber(latestChicken?.chicks),
-    },
-    profit: {
-      daily: todayProfit,
-      monthly: monthlyProfit,
-      yearly: yearlyProfit,
     },
     charts: {
       eggProduction,
       feedConsumption,
-      profitAnalysis,
     },
     alerts,
   };

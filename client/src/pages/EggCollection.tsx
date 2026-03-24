@@ -24,6 +24,10 @@ export default function EggCollection() {
     notes: ''
   });
 
+  const eggsCollectedValue = Number(formData.eggsCollected || 0);
+  const brokenEggsValue = Number(formData.brokenEggs || 0);
+  const actualEggsValue = Math.max(0, eggsCollectedValue - brokenEggsValue);
+
   const sortedEggs = useMemo(
     () =>
       [...(eggs ?? [])].sort(
@@ -73,7 +77,7 @@ export default function EggCollection() {
         <div className="space-y-8">
           <section className="space-y-3">
             <h3 className="text-lg font-bold font-display text-primary">Pure Egg Collection</h3>
-            <DataTable headers={["Date", "Shed", "Eggs Collected", "Broken Eggs", "Notes"]}>
+            <DataTable headers={["Date", "Shed", "Eggs Collected", "Broken Eggs", "Actual Eggs", "Notes"]}>
               {pureEggs.map(record => (
                 <tr key={record.id} className="hover:bg-black/5 transition-colors">
                   <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
@@ -84,18 +88,21 @@ export default function EggCollection() {
                   </td>
                   <td className="px-6 py-4 font-display font-bold text-lg">{record.eggsCollected.toLocaleString()}</td>
                   <td className="px-6 py-4 font-bold text-warning">{(record.brokenEggs ?? 0).toLocaleString()}</td>
+                  <td className="px-6 py-4 font-display font-bold text-lg">
+                    {Math.max(0, record.eggsCollected - (record.brokenEggs ?? 0)).toLocaleString()}
+                  </td>
                   <td className="px-6 py-4 text-muted-foreground">{record.notes || '-'}</td>
                 </tr>
               ))}
               {pureEggs.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No pure egg records found.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No pure egg records found.</td></tr>
               )}
             </DataTable>
           </section>
 
           <section className="space-y-3">
             <h3 className="text-lg font-bold font-display text-primary">Broiler Egg Collection</h3>
-            <DataTable headers={["Date", "Shed", "Eggs Collected", "Broken Eggs", "Notes"]}>
+            <DataTable headers={["Date", "Shed", "Eggs Collected", "Broken Eggs", "Actual Eggs", "Notes"]}>
               {broilerEggs.map(record => (
                 <tr key={record.id} className="hover:bg-black/5 transition-colors">
                   <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
@@ -106,11 +113,14 @@ export default function EggCollection() {
                   </td>
                   <td className="px-6 py-4 font-display font-bold text-lg">{record.eggsCollected.toLocaleString()}</td>
                   <td className="px-6 py-4 font-bold text-warning">{(record.brokenEggs ?? 0).toLocaleString()}</td>
+                  <td className="px-6 py-4 font-display font-bold text-lg">
+                    {Math.max(0, record.eggsCollected - (record.brokenEggs ?? 0)).toLocaleString()}
+                  </td>
                   <td className="px-6 py-4 text-muted-foreground">{record.notes || '-'}</td>
                 </tr>
               ))}
               {broilerEggs.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">No broiler egg records found.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No broiler egg records found.</td></tr>
               )}
             </DataTable>
           </section>
@@ -138,6 +148,12 @@ export default function EggCollection() {
           <Input
             label="Broken Eggs" type="number" min="0" placeholder="e.g. 12"
             value={formData.brokenEggs} onChange={e => setFormData({...formData, brokenEggs: e.target.value})}
+          />
+          <Input
+            label="Actual Eggs"
+            type="number"
+            value={actualEggsValue}
+            readOnly
           />
           <Input 
             label="Shed Name/Number" required placeholder="e.g. Shed A"

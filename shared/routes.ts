@@ -5,13 +5,13 @@ import {
   insertEggSalesSchema, eggSales,
   insertChickenSalesSchema, chickenSales,
   insertChickenManagementSchema, chickenManagement,
-  insertDiseaseRecordsSchema, diseaseRecords,
   insertInventorySchema, inventory,
   insertExpensesSchema, expenses,
   insertFeedMetricsSchema, feedMetrics,
   whatsappMessages,
+  fcmTokens,
   insertVaccinationsSchema, vaccinations
-} from './schema';
+} from './schema.js';
 
 export const errorSchemas = {
   validation: z.object({ message: z.string(), field: z.string().optional() }),
@@ -37,20 +37,24 @@ const dashboardAnalyticsSchema = z.object({
     date: z.string(),
     eggsProduced: z.number(),
     brokenEggs: z.number(),
-    totalRevenue: z.number(),
-    totalCost: z.number(),
-    netProfit: z.number(),
+    totalEggsAvailable: z.number(),
+    totalEggsSold: z.number(),
+    pureEggsSold: z.number(),
+    broilerEggsSold: z.number(),
+    pureEggsAvailable: z.number(),
+    broilerEggsAvailable: z.number(),
+    totalFeedRemaining: z.number(),
+    totalChickensAvailable: z.number(),
+    pureChickensAvailable: z.number(),
+    broilerChickensAvailable: z.number(),
+    eggRevenue: z.number(),
+    pureEggRevenue: z.number(),
+    broilerEggRevenue: z.number(),
+    chickenRevenue: z.number(),
+    pureChickenRevenue: z.number(),
+    broilerChickenRevenue: z.number(),
     feedConsumedKg: z.number(),
-    feedStockKg: z.number(),
     mortalityCount: z.number(),
-    healthyChickens: z.number(),
-    sickChickens: z.number(),
-    newChicks: z.number(),
-  }),
-  profit: z.object({
-    daily: z.number(),
-    monthly: z.number(),
-    yearly: z.number(),
   }),
   charts: z.object({
     eggProduction: z.array(
@@ -67,16 +71,17 @@ const dashboardAnalyticsSchema = z.object({
         feedStockKg: z.number(),
       }),
     ),
-    profitAnalysis: z.array(
-      z.object({
-        date: z.string(),
-        revenue: z.number(),
-        cost: z.number(),
-        profit: z.number(),
-      }),
-    ),
   }),
   alerts: z.array(dashboardAlertSchema),
+});
+
+const dailyProfitReportRowSchema = z.object({
+  date: z.string(),
+  eggsSold: z.number(),
+  chickensSold: z.number(),
+  totalRevenue: z.number(),
+  totalExpenses: z.number(),
+  netDailyProfit: z.number(),
 });
 
 const publicUserSchema = z.object({
@@ -202,24 +207,6 @@ export const api = {
       }
     }
   },
-  diseases: {
-    list: {
-      method: 'GET' as const,
-      path: '/api/diseases' as const,
-      responses: { 200: z.array(z.custom<typeof diseaseRecords.$inferSelect>()) }
-    },
-    create: {
-      method: 'POST' as const,
-      path: '/api/diseases' as const,
-      input: insertDiseaseRecordsSchema.extend({
-        chickensAffected: z.coerce.number(),
-      }),
-      responses: {
-        201: z.custom<typeof diseaseRecords.$inferSelect>(),
-        400: errorSchemas.validation,
-      }
-    }
-  },
   inventory: {
     list: {
       method: 'GET' as const,
@@ -306,6 +293,15 @@ export const api = {
       }
     }
   },
+  reports: {
+    dailyProfit: {
+      method: 'GET' as const,
+      path: '/api/reports/daily-profit' as const,
+      responses: {
+        200: z.array(dailyProfitReportRowSchema),
+      }
+    }
+  },
   alerts: {
     sendWhatsApp: {
       method: 'POST' as const,
@@ -338,7 +334,58 @@ export const api = {
       }
     },
   },
+  notifications: {
+    registerToken: {
+      method: 'POST' as const,
+      path: '/api/notifications/tokens' as const,
+      input: z.object({
+        token: z.string().min(1),
+        deviceLabel: z.string().max(120).optional(),
+      }),
+      responses: {
+        200: z.object({
+          status: z.literal('registered'),
+          tokenId: z.number(),
+        }),
+        400: errorSchemas.validation,
+      }
+    },
+    listTokens: {
+      method: 'GET' as const,
+      path: '/api/notifications/tokens' as const,
+      responses: {
+        200: z.array(z.custom<typeof fcmTokens.$inferSelect>()),
+      }
+    },
+    sendTest: {
+      method: 'POST' as const,
+      path: '/api/notifications/test' as const,
+      input: z.object({
+        title: z.string().min(1).max(120).default('Poultry Manager'),
+        body: z.string().min(1).max(240).default('Test notification from Poultry Manager'),
+        url: z.string().default('/'),
+      }),
+      responses: {
+        200: z.object({
+          sent: z.number(),
+          failed: z.number(),
+          skipped: z.boolean().optional(),
+          reason: z.string().optional(),
+        }),
+        400: errorSchemas.validation,
+      }
+    },
+  },
   ai: {
+    assistant: {
+      method: 'POST' as const,
+      path: '/api/ai' as const,
+      input: z.object({ message: z.string() }),
+      responses: {
+        200: z.object({ response: z.string() }),
+        500: errorSchemas.internal,
+      }
+    },
     chat: {
       method: 'POST' as const,
       path: '/api/ai-chat' as const,
@@ -346,24 +393,6 @@ export const api = {
       responses: {
         200: z.object({ response: z.string() }),
         500: errorSchemas.internal,
-      }
-    },
-    diseaseDetection: {
-      method: 'POST' as const,
-      path: '/api/ai/disease-detection' as const,
-      input: z.object({
-        imageBase64: z.string().min(1),
-        notes: z.string().optional(),
-      }),
-      responses: {
-        200: z.object({
-          disease: z.string(),
-          confidence: z.number(),
-          severity: z.enum(['low', 'moderate', 'high']),
-          suggestedTreatment: z.string(),
-          observations: z.string(),
-        }),
-        400: errorSchemas.validation,
       }
     },
     eggPrediction: {
@@ -419,7 +448,7 @@ export const api = {
         400: errorSchemas.validation,
       }
     },
-  }
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {

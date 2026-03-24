@@ -1,6 +1,8 @@
+import { storage } from "../storage.js";
+import { sendPushNotificationToAll } from "./fcm.js";
+
 const DEFAULT_FEED_THRESHOLD_KG = 10;
 const DEFAULT_EGG_COLLECTION_NOTIFY_THRESHOLD = 1;
-const DEFAULT_DISEASE_NOTIFY_THRESHOLD = 1;
 const DEFAULT_VACCINATION_REMINDER_DAYS = 1;
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -92,38 +94,56 @@ async function sendFast2Sms(message: string): Promise<void> {
 }
 
 export async function sendNotification(message: string): Promise<void> {
+  const errors: Error[] = [];
+  let delivered = false;
+
   const enabled = (process.env.ENABLE_SMS_ALERTS ?? "true").toLowerCase() !== "false";
-  if (!enabled) {
-    return;
+  if (enabled) {
+    try {
+      const provider = (process.env.NOTIFICATION_PROVIDER ?? process.env.ALERT_PROVIDER ?? "auto").toLowerCase();
+      const hasTwilioSmsConfig =
+        Boolean(process.env.TWILIO_ACCOUNT_SID?.trim()) &&
+        Boolean(process.env.TWILIO_AUTH_TOKEN?.trim()) &&
+        Boolean(process.env.TWILIO_SMS_FROM?.trim()) &&
+        Boolean(process.env.TWILIO_SMS_TO?.trim() ?? process.env.FARM_OWNER_PHONE?.trim());
+
+      if (provider !== "disabled" && provider !== "none") {
+        if (provider === "twilio" || provider === "twilio_sms") {
+          await sendTwilioSms(message);
+          delivered = true;
+        } else if (provider === "fast2sms") {
+          await sendFast2Sms(message);
+          delivered = true;
+        } else if (hasTwilioSmsConfig) {
+          await sendTwilioSms(message);
+          delivered = true;
+        } else {
+          await sendFast2Sms(message);
+          delivered = true;
+        }
+      }
+    } catch (error) {
+      errors.push(error as Error);
+    }
   }
 
-  const provider = (process.env.NOTIFICATION_PROVIDER ?? process.env.ALERT_PROVIDER ?? "auto").toLowerCase();
-  const hasTwilioSmsConfig =
-    Boolean(process.env.TWILIO_ACCOUNT_SID?.trim()) &&
-    Boolean(process.env.TWILIO_AUTH_TOKEN?.trim()) &&
-    Boolean(process.env.TWILIO_SMS_FROM?.trim()) &&
-    Boolean(process.env.TWILIO_SMS_TO?.trim() ?? process.env.FARM_OWNER_PHONE?.trim());
-
-  if (provider === "disabled" || provider === "none") {
-    return;
+  try {
+    const pushResult = await sendPushNotificationToAll(storage, {
+      title: "Poultry Manager",
+      body: message,
+      icon: "/icon-192.png",
+      url: "/",
+    });
+    if (!pushResult.skipped && pushResult.sent > 0) {
+      delivered = true;
+    }
+  } catch (error) {
+    errors.push(error as Error);
   }
 
-  if (provider === "twilio" || provider === "twilio_sms") {
-    await sendTwilioSms(message);
-    return;
+  if (!delivered && errors.length > 0) {
+    throw errors[0]!;
   }
-
-  if (provider === "fast2sms") {
-    await sendFast2Sms(message);
-    return;
-  }
-
-  if (hasTwilioSmsConfig) {
-    await sendTwilioSms(message);
-    return;
-  }
-
-  await sendFast2Sms(message);
 }
 
 export async function notifyEggCollectionSaved(input: {
@@ -143,24 +163,6 @@ export async function notifyEggCollectionSaved(input: {
   const chickenType = input.chickenType === "Broiler" ? "Broiler" : "Pure";
   await sendNotification(
     `${input.eggsCollected} ${chickenType.toLowerCase()} eggs collected today from ${input.shed || "farm shed"}.`,
-  );
-}
-
-export async function notifyDiseaseDetected(input: {
-  diseaseName: string;
-  chickensAffected: number;
-  date: string | Date;
-}): Promise<void> {
-  const threshold = getEnvNumber(
-    "DISEASE_AFFECTED_NOTIFY_THRESHOLD",
-    DEFAULT_DISEASE_NOTIFY_THRESHOLD,
-  );
-  if (toNumber(input.chickensAffected) < threshold) {
-    return;
-  }
-
-  await sendNotification(
-    `Chicken disease detected: ${input.diseaseName} in shed/farm area. ${input.chickensAffected} birds affected.`,
   );
 }
 

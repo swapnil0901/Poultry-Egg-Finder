@@ -1,7 +1,15 @@
 import { Link, useLocation } from "wouter";
-import { 
-  LayoutDashboard, Egg, IndianRupee, ShieldAlert, 
-  Package, Receipt, Syringe, FileBarChart, Bot, LogOut, Bird, Sparkles
+import {
+  LayoutDashboard,
+  Egg,
+  IndianRupee,
+  Package,
+  Receipt,
+  Syringe,
+  FileBarChart,
+  Bot,
+  LogOut,
+  Bird,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -9,17 +17,17 @@ import { motion } from "framer-motion";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/classic-dashboard", label: "Classic Dashboard", icon: LayoutDashboard },
   { href: "/eggs", label: "Egg Collection", icon: Egg },
   { href: "/sales", label: "Egg Sales", icon: IndianRupee },
   { href: "/chicken-sales", label: "Chicken Sales", icon: IndianRupee },
   { href: "/chickens", label: "Chickens", icon: Bird },
-  { href: "/diseases", label: "Health & Disease", icon: ShieldAlert },
   { href: "/inventory", label: "Inventory", icon: Package },
   { href: "/feed", label: "Feed Logs", icon: Package },
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/vaccinations", label: "Vaccinations", icon: Syringe },
   { href: "/reports", label: "Reports", icon: FileBarChart },
-  { href: "/ai", label: "AI Assistant", icon: Bot },
+  { href: "/ai", label: "AI Poultry Assistant", icon: Bot },
 ];
 
 const containerVariants = {
@@ -107,17 +115,6 @@ export function Sidebar() {
                 </motion.div>
                 
                 <span className="relative z-10">{item.label}</span>
-
-                {/* Sparkle effect for active item */}
-                {isActive && (
-                  <motion.div
-                    animate={{ opacity: [0, 1, 0] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="ml-auto"
-                  >
-                    <Sparkles size={16} className="text-primary" />
-                  </motion.div>
-                )}
               </Link>
             </motion.div>
           );

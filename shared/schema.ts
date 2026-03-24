@@ -70,14 +70,6 @@ export const chickenManagement = pgTable("chicken_management", {
   chickenType: text("chicken_type").notNull().default("Pure"),
 });
 
-export const diseaseRecords = pgTable("disease_records", {
-  id: serial("id").primaryKey(),
-  date: date("date").notNull(),
-  diseaseName: text("disease_name").notNull(),
-  chickensAffected: integer("chickens_affected").notNull(),
-  treatment: text("treatment").notNull(),
-});
-
 export const inventory = pgTable("inventory", {
   id: serial("id").primaryKey(),
   itemName: text("item_name").notNull(),
@@ -133,6 +125,18 @@ export const whatsappMessages = pgTable("whatsapp_messages", {
   whatsappLink: text("whatsapp_link").notNull(),
 });
 
+export const fcmTokens = pgTable("fcm_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id"),
+  token: text("token").notNull().unique(),
+  deviceLabel: text("device_label"),
+  userAgent: text("user_agent"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const vaccinations = pgTable("vaccinations", {
   id: serial("id").primaryKey(),
   vaccineName: text("vaccine_name").notNull(),
@@ -148,12 +152,18 @@ export const insertEggCollectionSchema = createInsertSchema(eggCollection).omit(
 export const insertEggSalesSchema = createInsertSchema(eggSales).omit({ id: true });
 export const insertChickenSalesSchema = createInsertSchema(chickenSales).omit({ id: true });
 export const insertChickenManagementSchema = createInsertSchema(chickenManagement).omit({ id: true });
-export const insertDiseaseRecordsSchema = createInsertSchema(diseaseRecords).omit({ id: true });
 export const insertInventorySchema = createInsertSchema(inventory).omit({ id: true });
 export const insertExpensesSchema = createInsertSchema(expenses).omit({ id: true });
 export const insertFeedMetricsSchema = createInsertSchema(feedMetrics).omit({ id: true });
 export const insertAlertEventsSchema = createInsertSchema(alertEvents).omit({ id: true, createdAt: true });
 export const insertWhatsappMessagesSchema = createInsertSchema(whatsappMessages).omit({ id: true, sentAt: true });
+export const insertFcmTokenSchema = createInsertSchema(fcmTokens).omit({
+  id: true,
+  isActive: true,
+  lastSeenAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertVaccinationsSchema = createInsertSchema(vaccinations).omit({ id: true });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -163,12 +173,12 @@ export type InsertEggCollection = z.infer<typeof insertEggCollectionSchema>;
 export type InsertEggSales = z.infer<typeof insertEggSalesSchema>;
 export type InsertChickenSale = z.infer<typeof insertChickenSalesSchema>;
 export type InsertChickenManagement = z.infer<typeof insertChickenManagementSchema>;
-export type InsertDiseaseRecord = z.infer<typeof insertDiseaseRecordsSchema>;
 export type InsertInventory = z.infer<typeof insertInventorySchema>;
 export type InsertExpense = z.infer<typeof insertExpensesSchema>;
 export type InsertFeedMetric = z.infer<typeof insertFeedMetricsSchema>;
 export type InsertAlertEvent = z.infer<typeof insertAlertEventsSchema>;
 export type InsertWhatsappMessage = z.infer<typeof insertWhatsappMessagesSchema>;
+export type InsertFcmToken = z.infer<typeof insertFcmTokenSchema>;
 export type InsertVaccination = z.infer<typeof insertVaccinationsSchema>;
 
 export type User = typeof users.$inferSelect;
@@ -178,10 +188,10 @@ export type EggCollection = typeof eggCollection.$inferSelect;
 export type EggSales = typeof eggSales.$inferSelect;
 export type ChickenSale = typeof chickenSales.$inferSelect;
 export type ChickenManagement = typeof chickenManagement.$inferSelect;
-export type DiseaseRecord = typeof diseaseRecords.$inferSelect;
 export type Inventory = typeof inventory.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type FeedMetric = typeof feedMetrics.$inferSelect;
 export type AlertEvent = typeof alertEvents.$inferSelect;
 export type WhatsAppMessage = typeof whatsappMessages.$inferSelect;
+export type FcmToken = typeof fcmTokens.$inferSelect;
 export type Vaccination = typeof vaccinations.$inferSelect;

@@ -1,16 +1,18 @@
-import type { Express, Request } from "express";
+import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { api } from "@shared/routes";
+import { storage } from "./storage.js";
+import { api } from "../shared/routes.js";
 import { z } from "zod";
 import OpenAI from "openai";
-import { buildDashboardAnalytics, triggerSmartAlerts } from "./services/dashboard-analytics";
+import { buildDashboardAnalytics, triggerSmartAlerts } from "./services/dashboard-analytics.js";
+import { buildDailyProfitReport } from "./services/farm-metrics.js";
 import {
-  notifyDiseaseDetected,
   notifyEggCollectionSaved,
   notifyLowFeedIfNeeded,
   notifyVaccinationReminderIfNeeded,
-} from "./services/notifications";
+} from "./services/notifications.js";
+import { sendPushNotificationToAll } from "./services/fcm.js";
+import { ensureDatabaseReady, isPostgresConfigured, pool } from "./db.js";
 
 function resolveOpenAIBaseUrl(): string | undefined {
   const raw =
@@ -45,7 +47,6 @@ const openai = openaiApiKey
       baseURL: openaiBaseUrl,
     })
   : null;
-
 type FarmSnapshot = {
   totalEggs: number;
   totalBrokenEggs: number;
@@ -65,10 +66,10 @@ type FarmSnapshot = {
         chicks: number;
       }
     | undefined;
-  latestDisease: Awaited<ReturnType<typeof storage.getDiseaseRecords>>[number] | undefined;
   nextVaccination: Awaited<ReturnType<typeof storage.getVaccinations>>[number] | undefined;
   overdueVaccinations: number;
 };
+
 
 type SafeUser = {
   id: number;
@@ -78,9 +79,194 @@ type SafeUser = {
   createdAt?: Date | string | null;
 };
 
+type SensorSnapshot = {
+  temperature: number;
+  humidity: number;
+  gas_level: number;
+  water_level: "LOW" | "MEDIUM" | "FULL";
+  light_level: number;
+  fan: "ON" | "OFF";
+  heater: "ON" | "OFF";
+  motor: "ON" | "OFF";
+  updated_at: string;
+};
+
+type StoredSensorData = {
+  id: number;
+  temperature: number | null;
+  humidity: number | null;
+  ammonia: number | null;
+  created_at: string;
+};
+
+type DeviceName = "fan" | "heater";
+type DeviceState = "ON" | "OFF";
+
+type StoredDeviceControl = {
+  id: number;
+  device: DeviceName;
+  state: DeviceState;
+  created_at: string;
+};
+
+const controllableDevices = new Set<DeviceName>(["fan", "heater"]);
+
+function normalizeDeviceName(value: unknown): DeviceName | null {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase() as DeviceName;
+  return controllableDevices.has(normalized) ? normalized : null;
+}
+
+function normalizeDeviceState(value: unknown): DeviceState | null {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase();
+  return normalized === "ON" || normalized === "OFF" ? normalized : null;
+}
+
 function toNumber(value: unknown): number {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
+}
+
+function getAuthenticatedUserId(req: { headers: Record<string, unknown> | any }): number | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer mock-jwt-token-")) {
+    return null;
+  }
+
+  const userId = Number(authHeader.replace("Bearer mock-jwt-token-", ""));
+  return Number.isFinite(userId) ? userId : null;
+}
+
+let latestSensorSnapshot: SensorSnapshot = {
+  temperature: 32,
+  humidity: 65,
+  gas_level: 120,
+  water_level: "LOW",
+  light_level: 420,
+  fan: "ON",
+  heater: "OFF",
+  motor: "ON",
+  updated_at: new Date().toISOString(),
+};
+
+async function readLatestStoredSensorData(): Promise<StoredSensorData | null> {
+  if (!isPostgresConfigured || !pool) {
+    return null;
+  }
+
+  await ensureDatabaseReady();
+
+  const result = await pool.query<StoredSensorData>(
+    `
+      SELECT id, temperature, humidity, ammonia, created_at
+      FROM sensor_data
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `,
+  );
+
+  return result.rows[0] ?? null;
+}
+
+function toStoredSensorResponse(row: StoredSensorData) {
+  const temperature = toNumber(row.temperature);
+  const humidity = toNumber(row.humidity);
+  const ammonia = toNumber(row.ammonia);
+
+  return {
+    id: row.id,
+    temperature,
+    humidity,
+    ammonia,
+    temp: temperature,
+    hum: humidity,
+    gas: ammonia,
+    created_at: new Date(row.created_at).toISOString(),
+  };
+}
+
+function toDashboardSensorSnapshot(row: StoredSensorData): SensorSnapshot {
+  const temperature = toNumber(row.temperature);
+  const humidity = toNumber(row.humidity);
+  const ammonia = toNumber(row.ammonia);
+
+  return {
+    temperature,
+    humidity,
+    gas_level: ammonia,
+    water_level: "MEDIUM",
+    light_level: 0,
+    fan: temperature >= 30 || ammonia > 300 ? "ON" : "OFF",
+    heater: "OFF",
+    motor: "OFF",
+    updated_at: new Date(row.created_at).toISOString(),
+  };
+}
+
+function toDeviceControlResponse(row: StoredDeviceControl) {
+  return {
+    id: row.id,
+    device: row.device,
+    state: row.state,
+    created_at: new Date(row.created_at).toISOString(),
+  };
+}
+
+async function readLatestDeviceControls(): Promise<Record<DeviceName, ReturnType<typeof toDeviceControlResponse> | null>> {
+  if (!isPostgresConfigured || !pool) {
+    return { fan: null, heater: null };
+  }
+
+  await ensureDatabaseReady();
+
+  const result = await pool.query<StoredDeviceControl>(`
+    SELECT DISTINCT ON (device) id, device, state, created_at
+    FROM device_control
+    WHERE device IN ('fan', 'heater')
+    ORDER BY device, created_at DESC, id DESC
+  `);
+
+  const latest: Record<DeviceName, ReturnType<typeof toDeviceControlResponse> | null> = {
+    fan: null,
+    heater: null,
+  };
+
+  for (const row of result.rows) {
+    latest[row.device] = toDeviceControlResponse(row);
+  }
+
+  return latest;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function nextSensorSnapshot(): SensorSnapshot {
+  const temperature = clamp(latestSensorSnapshot.temperature + (Math.random() * 2.4 - 1.2), 24, 39);
+  const humidity = clamp(latestSensorSnapshot.humidity + (Math.random() * 6 - 3), 40, 85);
+  const gasLevel = clamp(latestSensorSnapshot.gas_level + (Math.random() * 20 - 10), 70, 220);
+  const lightLevel = clamp(latestSensorSnapshot.light_level + (Math.random() * 80 - 40), 180, 900);
+  const waterCycle: SensorSnapshot["water_level"][] = ["FULL", "MEDIUM", "LOW"];
+  const waterLevel =
+    waterCycle[Math.floor((Date.now() / 30000) % waterCycle.length)] ?? latestSensorSnapshot.water_level;
+
+  latestSensorSnapshot = {
+    temperature: Number(temperature.toFixed(1)),
+    humidity: Math.round(humidity),
+    gas_level: Math.round(gasLevel),
+    water_level: waterLevel,
+    light_level: Math.round(lightLevel),
+    fan: temperature >= 31 || gasLevel >= 135 ? "ON" : "OFF",
+    heater: temperature <= 27 ? "ON" : "OFF",
+    motor: waterLevel === "LOW" ? "ON" : "OFF",
+    updated_at: new Date().toISOString(),
+  };
+
+  return latestSensorSnapshot;
 }
 
 function sanitizeUser(user: {
@@ -96,48 +282,6 @@ function sanitizeUser(user: {
     email: user.email,
     role: user.role,
     createdAt: user.createdAt ?? null,
-  };
-}
-
-async function getRequestUser(req: Request) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer mock-jwt-token-")) {
-    return null;
-  }
-
-  const id = Number.parseInt(authHeader.replace("Bearer mock-jwt-token-", ""), 10);
-  if (!Number.isFinite(id)) {
-    return null;
-  }
-
-  return storage.getUserById(id);
-}
-
-function maskFinancialAnalytics<T extends z.infer<typeof api.dashboard.analytics.responses[200]>>(
-  analytics: T,
-): T {
-  return {
-    ...analytics,
-    today: {
-      ...analytics.today,
-      totalRevenue: 0,
-      totalCost: 0,
-      netProfit: 0,
-    },
-    profit: {
-      daily: 0,
-      monthly: 0,
-      yearly: 0,
-    },
-    charts: {
-      ...analytics.charts,
-      profitAnalysis: analytics.charts.profitAnalysis.map((item) => ({
-        ...item,
-        revenue: 0,
-        cost: 0,
-        profit: 0,
-      })),
-    },
   };
 }
 
@@ -231,12 +375,11 @@ function resolveStorageDate(value: string | undefined, fallback: string): string
 }
 
 async function buildFarmSnapshot(): Promise<FarmSnapshot> {
-  const [eggs, sales, chickenSales, chickens, diseases, expenses, vaccinations] = await Promise.all([
+  const [eggs, sales, chickenSales, chickens, expenses, vaccinations] = await Promise.all([
     storage.getEggCollections(),
     storage.getEggSales(),
     storage.getChickenSales(),
     storage.getChickenManagement(),
-    storage.getDiseaseRecords(),
     storage.getExpenses(),
     storage.getVaccinations(),
   ]);
@@ -307,7 +450,6 @@ async function buildFarmSnapshot(): Promise<FarmSnapshot> {
     totalExpenses,
     netProfit: totalRevenue - totalExpenses,
     latestChicken,
-    latestDisease: diseases[0],
     nextVaccination,
     overdueVaccinations,
   };
@@ -324,7 +466,6 @@ function buildSnapshotSummary(snapshot: FarmSnapshot): string {
     `Total expenses: ${formatRupees(snapshot.totalExpenses)}`,
     `Net profit: ${formatRupees(snapshot.netProfit)}`,
     `Latest flock status: total=${snapshot.latestChicken?.totalChickens ?? 0}, healthy=${snapshot.latestChicken?.healthy ?? 0}, sick=${snapshot.latestChicken?.sick ?? 0}, dead=${snapshot.latestChicken?.dead ?? 0}, chicks=${snapshot.latestChicken?.chicks ?? 0}`,
-    `Latest disease: ${snapshot.latestDisease?.diseaseName ?? "None"} (affected=${snapshot.latestDisease?.chickensAffected ?? 0}, date=${formatDateLabel(snapshot.latestDisease?.date)})`,
     `Next vaccination: ${snapshot.nextVaccination?.vaccineName ?? "N/A"} on ${formatDateLabel(snapshot.nextVaccination?.nextVaccination)}`,
     `Overdue vaccinations: ${snapshot.overdueVaccinations}`,
   ].join("\n");
@@ -353,11 +494,8 @@ function buildFallbackAIResponse(message: string, snapshot: FarmSnapshot): strin
     return `Total recorded expenses are ${formatRupees(snapshot.totalExpenses)}. If costs are rising, compare feed supplier rates and monitor feed conversion weekly.`;
   }
 
-  if (text.includes("sick") || text.includes("disease") || text.includes("health")) {
-    const diseasePart = snapshot.latestDisease
-      ? `Latest disease record: ${snapshot.latestDisease.diseaseName} affecting ${snapshot.latestDisease.chickensAffected} birds on ${formatDateLabel(snapshot.latestDisease.date)}.`
-      : "No disease records found yet.";
-    return `Current flock health: healthy ${snapshot.latestChicken?.healthy ?? 0}, sick ${snapshot.latestChicken?.sick ?? 0}, dead ${snapshot.latestChicken?.dead ?? 0}. ${diseasePart}`;
+  if (text.includes("sick") || text.includes("health")) {
+    return `Current flock health: healthy ${snapshot.latestChicken?.healthy ?? 0}, sick ${snapshot.latestChicken?.sick ?? 0}, dead ${snapshot.latestChicken?.dead ?? 0}.`;
   }
 
   if (text.includes("vaccin")) {
@@ -367,137 +505,186 @@ function buildFallbackAIResponse(message: string, snapshot: FarmSnapshot): strin
   return `I can answer using your farm data. Ask about eggs, broken eggs, sales, profit, expenses, flock health, or vaccinations.\nQuick status: Eggs ${snapshot.totalEggs}, Revenue ${formatRupees(snapshot.totalRevenue)}, Profit ${formatRupees(snapshot.netProfit)}.`;
 }
 
-function normalizeBase64Image(input: string): string {
-  if (input.startsWith("data:image/")) {
-    return input;
-  }
-  return `data:image/jpeg;base64,${input}`;
+function normalizeCommandText(message: string): string {
+  return message.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function estimateDiseaseFromNotes(notes: string | undefined): z.infer<typeof api.ai.diseaseDetection.responses[200]> {
-  const text = (notes || "").toLowerCase();
+function resolveRelativeDate(input: string): string | null {
+  const today = new Date();
+  const normalized = input.toLowerCase();
 
-  if (
-    text.includes("twisted neck") ||
-    text.includes("paralysis") ||
-    text.includes("respiratory") ||
-    text.includes("sneeze")
-  ) {
-    return {
-      disease: "Possible Newcastle Disease",
-      confidence: 78,
-      severity: "high",
-      suggestedTreatment:
-        "Isolate affected birds, start Newcastle vaccination protocol for healthy flock, and consult a veterinarian for antibiotics/supportive care.",
-      observations:
-        "Symptoms pattern suggests a possible viral respiratory-neurological infection.",
-    };
+  if (normalized.includes("today")) {
+    return toDateOnly(today);
+  }
+  if (normalized.includes("yesterday")) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - 1);
+    return toDateOnly(date);
+  }
+  if (normalized.includes("tomorrow")) {
+    const date = new Date(today);
+    date.setDate(date.getDate() + 1);
+    return toDateOnly(date);
   }
 
-  if (
-    text.includes("bloody") ||
-    text.includes("diarrhea") ||
-    text.includes("droppings")
-  ) {
-    return {
-      disease: "Possible Coccidiosis",
-      confidence: 74,
-      severity: "moderate",
-      suggestedTreatment:
-        "Start anticoccidial treatment, improve litter dryness, and sanitize drinkers/feeders.",
-      observations:
-        "Digestive symptom pattern is commonly associated with coccidial infection.",
-    };
+  const isoMatch = normalized.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (isoMatch) {
+    return isoMatch[1];
   }
 
-  if (text.includes("swollen eye") || text.includes("nasal discharge") || text.includes("cough")) {
-    return {
-      disease: "Possible Chronic Respiratory Disease (CRD)",
-      confidence: 71,
-      severity: "moderate",
-      suggestedTreatment:
-        "Improve shed ventilation, isolate sick birds, and consult a vet for targeted respiratory antibiotics.",
-      observations:
-        "Respiratory signs may indicate bacterial respiratory disease spread.",
-    };
+  const slashMatch = normalized.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
+  if (slashMatch) {
+    const month = slashMatch[1].padStart(2, "0");
+    const day = slashMatch[2].padStart(2, "0");
+    const year = slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3];
+    return `${year}-${month}-${day}`;
   }
+
+  return null;
+}
+
+function extractExpenseDetails(message: string): {
+  amount: number | null;
+  type: string;
+  description: string;
+  date: string;
+} {
+  const amountMatch = message.match(/(\d+(?:\.\d+)?)/);
+  const amount = amountMatch ? Number(amountMatch[1]) : null;
+  const date = resolveRelativeDate(message) ?? toDateOnly(new Date());
+
+  const cleaned = message
+    .replace(/add expense/i, "")
+    .replace(/rupees|rs\.?|inr/gi, "")
+    .replace(/\b(today|yesterday|tomorrow)\b/gi, "")
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "")
+    .replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, "")
+    .replace(/\d+(?:\.\d+)?/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const type = cleaned ? cleaned : "General";
+  const description = cleaned ? `Voice entry: ${cleaned}` : "Voice entry: general expense";
 
   return {
-    disease: "General Stress / Nutritional Imbalance",
-    confidence: 58,
-    severity: "low",
-    suggestedTreatment:
-      "Review feed quality, water hygiene, temperature control, and monitor birds for 48 hours.",
-    observations:
-      "No strong disease signature detected from the provided input. Clinical confirmation is recommended.",
+    amount: Number.isFinite(amount ?? NaN) ? amount : null,
+    type,
+    description,
+    date,
   };
 }
 
-async function detectDiseaseFromImage(
-  imageBase64: string,
-  notes?: string,
-): Promise<z.infer<typeof api.ai.diseaseDetection.responses[200]>> {
+async function tryHandleVoiceCommands(message: string): Promise<string | null> {
+  const text = normalizeCommandText(message);
+
+  if (!text) return null;
+
+  if (text.includes("eggs today") || text.includes("today eggs") || text.includes("how many eggs")) {
+    const analytics = await buildDashboardAnalytics(storage, { triggerSms: false });
+    return [
+      `Today (${analytics.today.date}) total eggs collected: ${analytics.today.eggsProduced}.`,
+      `Pure eggs available: ${analytics.today.pureEggsAvailable}.`,
+      `Broiler eggs available: ${analytics.today.broilerEggsAvailable}.`,
+      `Broken eggs today: ${analytics.today.brokenEggs}.`,
+    ].join(" ");
+  }
+
+  if (text.includes("show feed data") || (text.includes("feed") && text.includes("data"))) {
+    const records = await storage.getFeedMetrics();
+    const latest = records[0];
+    if (!latest) {
+      return "I do not see any feed records yet. Add a feed entry to track stock and usage.";
+    }
+    return `Latest feed record (${toDateOnly(latest.date)}): opening ${latest.openingStockKg} kg, added ${latest.feedAddedKg} kg, consumed ${latest.feedConsumedKg} kg, closing ${latest.closingStockKg} kg.`;
+  }
+
+  if (text.includes("add expense")) {
+    const details = extractExpenseDetails(message);
+    if (!details.amount) {
+      return "Please say the amount to add. Example: 'Add expense 2500 for feed'.";
+    }
+    return `Expense draft: ${details.type} for ${formatRupees(details.amount)} on ${details.date}. Please confirm in the UI to save it.`;
+  }
+
+  if (text.includes("health tips") || text.includes("poultry health")) {
+    return [
+      "Poultry health tips:",
+      "1) Keep litter dry and change wet spots daily.",
+      "2) Ensure clean waterers and disinfect weekly.",
+      "3) Watch feed intake; sudden drops are early illness signs.",
+      "4) Separate sick birds and log symptoms immediately.",
+      "5) Maintain proper ventilation and avoid ammonia buildup.",
+    ].join("\n");
+  }
+
+  if (text.includes("sick chickens") || (text.includes("sick") && text.includes("chicken"))) {
+    const snapshot = await buildFarmSnapshot();
+    return `Current sick chickens: ${snapshot.latestChicken?.sick ?? 0}.`;
+  }
+
+  if (text.includes("healthy chickens") || (text.includes("healthy") && text.includes("chicken"))) {
+    const snapshot = await buildFarmSnapshot();
+    return `Current healthy chickens: ${snapshot.latestChicken?.healthy ?? 0}.`;
+  }
+
+  if (text.includes("mortality") && text.includes("today")) {
+    const analytics = await buildDashboardAnalytics(storage, { triggerSms: false });
+    return `Chicken mortality today (${analytics.today.date}): ${analytics.today.mortalityCount}.`;
+  }
+
+  if (text.includes("farm report") || (text.includes("show") && text.includes("report"))) {
+    const report = await buildSmartReport("weekly");
+    return [
+      `${report.title}: ${report.summary}`,
+      `Highlights: ${report.highlights.join("; ")}`,
+      `Risks: ${report.risks.join("; ")}`,
+      `Actions: ${report.actions.join("; ")}`,
+    ].join("\n");
+  }
+
+  return null;
+}
+
+async function generateAIResponse(message: string): Promise<string> {
+  const snapshot = await buildFarmSnapshot();
+  const commandResponse = await tryHandleVoiceCommands(message);
+
+  if (commandResponse) {
+    return commandResponse;
+  }
+
   if (!openai) {
-    return estimateDiseaseFromNotes(notes);
+    return buildFallbackAIResponse(message, snapshot);
   }
 
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      response_format: { type: "json_object" },
-      temperature: 0.2,
       messages: [
         {
           role: "system",
           content:
-            "You are a poultry disease triage assistant. Analyze image + farmer notes and return strict JSON with keys: disease, confidence, severity, suggestedTreatment, observations. confidence is number 0-100. severity must be one of: low, moderate, high.",
+            "You are a poultry farm expert assisting the Poultry Egg Tracker system. Use the provided farm snapshot values as the source of truth for numeric answers. If data is missing, state that clearly. Keep responses concise, practical, and action-oriented.",
         },
         {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `Farmer notes: ${notes || "No additional notes provided."}`,
-            },
-            {
-              type: "image_url",
-              image_url: { url: normalizeBase64Image(imageBase64) },
-            },
-          ],
-        } as any,
-      ] as any,
+          role: "system",
+          content: `Farm snapshot:\n${buildSnapshotSummary(snapshot)}`,
+        },
+        { role: "user", content: message },
+      ],
+      temperature: 0.3,
     });
 
-    const payload = response.choices[0]?.message?.content;
-    if (!payload) {
-      return estimateDiseaseFromNotes(notes);
-    }
-
-    const parsed = JSON.parse(payload) as Record<string, unknown>;
-    const severityRaw = String(parsed.severity || "moderate").toLowerCase();
-    const severity =
-      severityRaw === "low" || severityRaw === "moderate" || severityRaw === "high"
-        ? severityRaw
-        : "moderate";
-
-    return {
-      disease: String(parsed.disease || "Possible poultry health issue"),
-      confidence: Math.min(99, Math.max(1, Math.round(toNumber(parsed.confidence) || 60))),
-      severity,
-      suggestedTreatment: String(
-        parsed.suggestedTreatment ||
-          "Isolate suspicious birds and consult a veterinarian for lab confirmation.",
-      ),
-      observations: String(
-        parsed.observations ||
-          "AI review completed. Use this as preliminary guidance, not a final diagnosis.",
-      ),
-    };
-  } catch (error) {
-    console.error("Vision disease detection failed, using fallback:", error);
-    return estimateDiseaseFromNotes(notes);
+    return (
+      response.choices[0]?.message?.content ||
+      "I couldn't process that request."
+    );
+  } catch (err) {
+    console.error("OpenAI request failed, returning fallback response:", err);
+    return buildFallbackAIResponse(message, snapshot);
   }
 }
+
 
 function linearRegressionNext(values: number[]): { slope: number; next: number } {
   if (values.length <= 1) {
@@ -571,7 +758,7 @@ async function predictEggProduction(
       trend === "increasing"
         ? "Production trend is improving. Maintain current feed and health routines."
         : trend === "decreasing"
-          ? "Production trend is softening. Review feed quality, disease signs, and shed stress factors."
+          ? "Production trend is softening. Review feed quality and shed stress factors."
           : "Production is stable. Small feed and lighting optimizations can improve output.",
   };
 }
@@ -689,23 +876,179 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  app.post(["/data", "/api/data"], async (req, res) => {
+    if (!isPostgresConfigured || !pool) {
+      return res.status(500).json({
+        message: "PostgreSQL is not configured. Set DATABASE_URL to store sensor data.",
+      });
+    }
+
+    const temperature = Number(req.body?.temperature ?? req.body?.temp);
+    const humidity = Number(req.body?.humidity ?? req.body?.hum);
+    const ammonia = Number(req.body?.ammonia ?? req.body?.gas);
+
+    if (
+      !Number.isFinite(temperature) ||
+      !Number.isFinite(humidity) ||
+      !Number.isFinite(ammonia)
+    ) {
+      return res.status(400).json({
+        message: "Send valid numeric temperature/humidity/ammonia or temp/hum/gas values.",
+      });
+    }
+
+    try {
+      await ensureDatabaseReady();
+
+      const result = await pool.query<StoredSensorData>(
+        `
+          INSERT INTO sensor_data (temperature, humidity, ammonia)
+          VALUES ($1, $2, $3)
+          RETURNING id, temperature, humidity, ammonia, created_at
+        `,
+        [temperature, humidity, ammonia],
+      );
+
+      const row = result.rows[0];
+      if (!row) {
+        throw new Error("Sensor insert returned no row.");
+      }
+
+      return res.status(201).json({
+        message: "Sensor data stored successfully.",
+        data: toStoredSensorResponse(row),
+      });
+    } catch (error) {
+      console.error("Failed to store sensor data:", error);
+      return res.status(500).json({ message: "Unable to store sensor data." });
+    }
+  });
+
+  app.get(["/data", "/api/data"], async (_req, res) => {
+    if (!isPostgresConfigured || !pool) {
+      return res.status(500).json({
+        message: "PostgreSQL is not configured. Set DATABASE_URL to load sensor data.",
+      });
+    }
+
+    try {
+      const row = await readLatestStoredSensorData();
+
+      if (!row) {
+        return res.status(404).json({ message: "No sensor data found." });
+      }
+
+      return res.json(toStoredSensorResponse(row));
+    } catch (error) {
+      console.error("Failed to load latest sensor data:", error);
+      return res.status(500).json({ message: "Unable to load sensor data." });
+    }
+  });
+
+  app.get("/api/sensors", async (_req, res) => {
+    try {
+      const row = await readLatestStoredSensorData();
+      if (row) {
+        return res.json(toDashboardSensorSnapshot(row));
+      }
+    } catch (error) {
+      console.error("Falling back to generated sensor snapshot:", error);
+    }
+
+    return res.json(nextSensorSnapshot());
+  });
+
+  app.post("/api/control", async (req, res) => {
+    if (!isPostgresConfigured || !pool) {
+      return res.status(500).json({
+        message: "PostgreSQL is not configured. Set DATABASE_URL to store device commands.",
+      });
+    }
+
+    const device = normalizeDeviceName(req.body?.device);
+    const state = normalizeDeviceState(req.body?.state);
+
+    if (!device || !state) {
+      return res.status(400).json({
+        message: "Send device as fan/heater and state as ON/OFF.",
+      });
+    }
+
+    try {
+      await ensureDatabaseReady();
+
+      const result = await pool.query<StoredDeviceControl>(
+        `
+          INSERT INTO device_control (device, state)
+          VALUES ($1, $2)
+          RETURNING id, device, state, created_at
+        `,
+        [device, state],
+      );
+
+      const row = result.rows[0];
+      if (!row) {
+        throw new Error("Device control insert returned no row.");
+      }
+
+      return res.status(201).json({
+        message: "Device command saved.",
+        data: toDeviceControlResponse(row),
+      });
+    } catch (error) {
+      console.error("Failed to store device command:", error);
+      return res.status(500).json({ message: "Unable to store device command." });
+    }
+  });
+
+  app.get("/api/control", async (req, res) => {
+    if (!isPostgresConfigured || !pool) {
+      return res.status(500).json({
+        message: "PostgreSQL is not configured. Set DATABASE_URL to load device commands.",
+      });
+    }
+
+    try {
+      const device = normalizeDeviceName(req.query.device);
+      const latest = await readLatestDeviceControls();
+
+      if (device) {
+        const row = latest[device];
+        if (!row) {
+          return res.status(404).json({ message: `No control command found for ${device}.` });
+        }
+        return res.json(row);
+      }
+
+      return res.json(latest);
+    } catch (error) {
+      console.error("Failed to load device commands:", error);
+      return res.status(500).json({ message: "Unable to load device commands." });
+    }
+  });
 
   // Auth routes (mock JWT for now)
   app.post(api.auth.login.path, async (req, res) => {
     try {
       const input = api.auth.login.input.parse(req.body);
-      // Allow fixed admin credentials without hitting storage for quick local sign-in
+
       if (input.email === "admin@gmail.com" && input.password === "123456") {
-        return res.json({
-          token: "mock-jwt-token-0",
-          user: sanitizeUser({
-            id: 0,
+        let adminUser = await storage.getUserByEmail(input.email);
+        if (!adminUser) {
+          adminUser = await storage.createUser({
             name: "Admin",
             email: input.email,
+            password: input.password,
             role: "admin",
-          }),
+          });
+        }
+
+        return res.json({
+          token: "mock-jwt-token-" + adminUser.id,
+          user: sanitizeUser(adminUser),
         });
       }
+
       const user = await storage.getUserByEmail(input.email);
       if (!user || user.password !== input.password) {
         return res.status(401).json({ message: "Invalid credentials" });
@@ -852,29 +1195,6 @@ export async function registerRoutes(
     }
   });
 
-  // Diseases
-  app.get(api.diseases.list.path, async (req, res) => {
-    const records = await storage.getDiseaseRecords();
-    res.json(records);
-  });
-
-  app.post(api.diseases.create.path, async (req, res) => {
-    try {
-      const input = api.diseases.create.input.parse(req.body);
-      const record = await storage.createDiseaseRecord(input);
-      void notifyDiseaseDetected(record).catch((error) => {
-        console.error("Disease notification failed:", error);
-      });
-      res.status(201).json(record);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        res.status(400).json({ message: err.errors[0].message });
-      } else {
-        res.status(400).json({ message: "Bad request" });
-      }
-    }
-  });
-
   // Inventory
   app.get(api.inventory.list.path, async (req, res) => {
     const records = await storage.getInventory();
@@ -967,12 +1287,21 @@ export async function registerRoutes(
   // Dashboard Analytics
   app.get(api.dashboard.analytics.path, async (req, res) => {
     try {
-      const analytics = await buildDashboardAnalytics(storage, { triggerSms: true });
-      const user = await getRequestUser(req);
-      res.json(user?.role === "admin" ? analytics : maskFinancialAnalytics(analytics));
+      const analytics = await buildDashboardAnalytics(storage, { triggerSms: false });
+      res.json(analytics);
     } catch (err) {
       console.error("Failed to build dashboard analytics:", err);
       res.status(500).json({ message: "Unable to load dashboard analytics" });
+    }
+  });
+
+  app.get(api.reports.dailyProfit.path, async (_req, res) => {
+    try {
+      const rows = await buildDailyProfitReport(storage);
+      res.json(rows);
+    } catch (error) {
+      console.error("Failed to build daily profit report:", error);
+      res.status(500).json({ message: "Unable to load daily profit report" });
     }
   });
 
@@ -980,6 +1309,52 @@ export async function registerRoutes(
     const limit = Number(req.query.limit ?? 50);
     const records = await storage.getWhatsAppMessages(Number.isFinite(limit) ? limit : 50);
     res.json(records);
+  });
+
+  app.get(api.notifications.listTokens.path, async (_req, res) => {
+    const tokens = await storage.getFcmTokens();
+    res.json(tokens);
+  });
+
+  app.post(api.notifications.registerToken.path, async (req, res) => {
+    try {
+      const input = api.notifications.registerToken.input.parse(req.body);
+      const token = await storage.upsertFcmToken({
+        token: input.token,
+        deviceLabel: input.deviceLabel ?? null,
+        userAgent: req.get("user-agent") ?? null,
+        userId: getAuthenticatedUserId(req),
+      });
+      res.json({
+        status: "registered",
+        tokenId: token.id,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Failed to register FCM token:", err);
+      return res.status(500).json({ message: "Unable to register notification token" });
+    }
+  });
+
+  app.post(api.notifications.sendTest.path, async (req, res) => {
+    try {
+      const input = api.notifications.sendTest.input.parse(req.body);
+      const result = await sendPushNotificationToAll(storage, {
+        title: input.title,
+        body: input.body,
+        url: input.url,
+        icon: "/icon-192.png",
+      });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Failed to send test notification:", err);
+      return res.status(500).json({ message: "Unable to send test notification" });
+    }
   });
 
   // WhatsApp Link Alert Generator (No paid API required)
@@ -997,7 +1372,9 @@ export async function registerRoutes(
       const eggs = input.eggs ?? analytics.today.eggsProduced;
       const brokenEggs = input.brokenEggs ?? analytics.today.brokenEggs;
       const feed = input.feed ?? analytics.today.feedConsumedKg;
-      const profit = input.profit ?? analytics.today.netProfit;
+      const reportRows = await buildDailyProfitReport(storage);
+      const todayReport = reportRows.find((row) => row.date === analytics.today.date);
+      const profit = input.profit ?? todayReport?.netDailyProfit ?? 0;
       const displayDate = input.date ?? analytics.today.date;
       const storageDate = resolveStorageDate(input.date, analytics.today.date);
       const status =
@@ -1057,58 +1434,23 @@ export async function registerRoutes(
   app.post(api.ai.chat.path, async (req, res) => {
     try {
       const { message } = api.ai.chat.input.parse(req.body);
-      const snapshot = await buildFarmSnapshot();
-
-      if (!openai) {
-        return res.json({ response: buildFallbackAIResponse(message, snapshot) });
-      }
-
-      try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are an AI assistant for a poultry farm called 'Poultry Egg Tracker'. Use the provided farm snapshot values as the source of truth for numeric answers. If data is missing, state that clearly. Keep responses concise and practical.",
-            },
-            {
-              role: "system",
-              content: `Farm snapshot:\n${buildSnapshotSummary(snapshot)}`,
-            },
-            { role: "user", content: message },
-          ],
-          temperature: 0.3,
-        });
-
-        return res.json({
-          response:
-            response.choices[0]?.message?.content ||
-            "I couldn't process that request.",
-        });
-      } catch (err) {
-        console.error("OpenAI request failed, returning fallback response:", err);
-        return res.json({ response: buildFallbackAIResponse(message, snapshot) });
-      }
+      const response = await generateAIResponse(message);
+      return res.json({ response });
     } catch (err) {
       console.error(err);
       res.status(400).json({ message: "Invalid AI request payload" });
     }
   });
 
-  // AI Disease Detection
-  app.post(api.ai.diseaseDetection.path, async (req, res) => {
+  // Voice/Assistant AI (alias endpoint for front-end voice assistant)
+  app.post(api.ai.assistant.path, async (req, res) => {
     try {
-      const input = api.ai.diseaseDetection.input.parse(req.body);
-      const result = await detectDiseaseFromImage(input.imageBase64, input.notes);
-      res.json(result);
+      const { message } = api.ai.assistant.input.parse(req.body);
+      const response = await generateAIResponse(message);
+      return res.json({ response });
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        res.status(400).json({ message: err.errors[0].message });
-      } else {
-        console.error("Disease detection failed:", err);
-        res.status(400).json({ message: "Unable to analyze uploaded image" });
-      }
+      console.error(err);
+      res.status(400).json({ message: "Invalid AI request payload" });
     }
   });
 

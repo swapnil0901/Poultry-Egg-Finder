@@ -2,8 +2,10 @@ const rawApiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.tr
 const apiBase = rawApiBase.replace(/\/+$/, "");
 
 export function toApiUrl(path: string): string {
+  if (typeof window !== "undefined" && window.location.port === "5000") {
+    return path;
+  }
   if (!apiBase) return path;
   if (/^https?:\/\//i.test(path)) return path;
   return `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
 }
-

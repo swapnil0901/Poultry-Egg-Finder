@@ -42,7 +42,13 @@ function createResourceHooks<T, I>(
           if (!res.ok) throw new Error(await getErrorMessage(res, `Failed to create ${queryKey}`));
           return createResponseSchema.parse(await parseJsonResponse<unknown>(res));
         },
-        onSuccess: () => qc.invalidateQueries({ queryKey: [queryKey] })
+        onSuccess: async () => {
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: [queryKey] }),
+            qc.invalidateQueries({ queryKey: ['dashboard-analytics'] }),
+            qc.invalidateQueries({ queryKey: ['daily-profit-report'] }),
+          ]);
+        }
       });
     }
   };
@@ -66,11 +72,6 @@ export const { useList: useChickenSales, useCreate: useCreateChickenSale } = cre
 export const { useList: useChickens, useCreate: useCreateChicken } = createResourceHooks<z.infer<typeof api.chickens.list.responses[200]>[0], z.infer<typeof api.chickens.create.input>>(
   'chickens', api.chickens.list.path, api.chickens.create.path, 
   api.chickens.list.responses[200], api.chickens.create.responses[201]
-);
-
-export const { useList: useDiseases, useCreate: useCreateDisease } = createResourceHooks<z.infer<typeof api.diseases.list.responses[200]>[0], z.infer<typeof api.diseases.create.input>>(
-  'diseases', api.diseases.list.path, api.diseases.create.path, 
-  api.diseases.list.responses[200], api.diseases.create.responses[201]
 );
 
 export const { useList: useInventory, useCreate: useCreateInventory } = createResourceHooks<z.infer<typeof api.inventory.list.responses[200]>[0], z.infer<typeof api.inventory.create.input>>(
@@ -103,6 +104,22 @@ export function useDashboardAnalytics() {
     },
     refetchInterval: 60_000,
     staleTime: 30_000,
+    refetchOnMount: "always",
+  });
+}
+
+export function useDailyProfitReport() {
+  return useQuery({
+    queryKey: ['daily-profit-report'],
+    queryFn: async () => {
+      const res = await fetchWithAuth(api.reports.dailyProfit.path);
+      if (!res.ok) {
+        throw new Error(await getErrorMessage(res, 'Failed to fetch daily profit report'));
+      }
+      return api.reports.dailyProfit.responses[200].parse(await parseJsonResponse<unknown>(res));
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }
 
@@ -118,22 +135,6 @@ export function useAIChat() {
       }
       const data = await parseJsonResponse<unknown>(res);
       return api.ai.chat.responses[200].parse(data);
-    }
-  });
-}
-
-export function useAIDiseaseDetection() {
-  return useMutation({
-    mutationFn: async (payload: z.infer<typeof api.ai.diseaseDetection.input>) => {
-      const res = await fetchWithAuth(api.ai.diseaseDetection.path, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        throw new Error(await getErrorMessage(res, 'Disease detection failed'));
-      }
-      const data = await parseJsonResponse<unknown>(res);
-      return api.ai.diseaseDetection.responses[200].parse(data);
     }
   });
 }

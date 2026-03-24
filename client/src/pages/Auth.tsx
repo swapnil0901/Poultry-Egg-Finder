@@ -5,8 +5,10 @@ import { Egg, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Auth() {
+  const nameRegex = /^[A-Za-z\s]+$/;
   const [isLogin, setIsLogin] = useState(true);
   const { login, register, isLoggingIn, isRegistering } = useAuth();
+  const [nameError, setNameError] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -17,15 +19,38 @@ export default function Auth() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isLogin) {
+      const trimmedName = formData.name.trim();
+
+      if (!nameRegex.test(trimmedName)) {
+        setNameError("Name must contain only letters.");
+        return;
+      }
+
+      setNameError("");
+    }
+
     try {
       if (isLogin) {
         await login({ email: formData.email, password: formData.password });
       } else {
-        await register(formData as any);
+        await register({ ...formData, name: formData.name.trim() } as any);
       }
     } catch (err: any) {
       alert(err.message);
     }
+  };
+
+  const handleNameChange = (value: string) => {
+    setFormData({ ...formData, name: value });
+
+    if (!value.trim() || nameRegex.test(value)) {
+      setNameError("");
+      return;
+    }
+
+    setNameError("Name must contain only letters.");
   };
 
   const containerVariants = {
@@ -133,7 +158,10 @@ export default function Auth() {
                       label="Full Name"
                       placeholder="John Doe"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) => handleNameChange(e.target.value)}
+                      pattern="^[A-Za-z\\s]+$"
+                      title="Name must contain only letters."
+                      error={nameError}
                       required
                     />
                   </motion.div>
@@ -215,6 +243,7 @@ export default function Auth() {
                 whileTap={{ scale: 0.95 }}
                 onClick={() => {
                   setIsLogin(!isLogin);
+                  setNameError("");
                   setFormData({ name: "", email: "", password: "", role: "worker" });
                 }}
                 className="text-primary hover:text-primary/80 font-semibold transition-colors inline-flex items-center gap-1"

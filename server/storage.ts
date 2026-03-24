@@ -1,34 +1,34 @@
 import { and, desc, eq } from "drizzle-orm";
-import { db, ensureDatabaseReady, isPostgresConfigured } from "./db";
+import { db, ensureDatabaseReady, isPostgresConfigured } from "./db.js";
 import {
   users,
   eggCollection,
   eggSales,
   chickenSales,
   chickenManagement,
-  diseaseRecords,
   inventory,
   expenses,
   feedMetrics,
   alertEvents,
   whatsappMessages,
+  fcmTokens,
   vaccinations,
   type User,
   type EggCollection,
   type EggSales,
   type ChickenSale,
   type ChickenManagement,
-  type DiseaseRecord,
   type Inventory,
   type Expense,
   type FeedMetric,
   type AlertEvent,
   type WhatsAppMessage,
+  type FcmToken,
   type Vaccination,
   type InsertUser,
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { z } from "zod";
-import { api } from "@shared/routes";
+import { api } from "../shared/routes.js";
 
 function toDateOnly(value: string | Date | undefined): string {
   if (!value) {
@@ -65,6 +65,13 @@ export interface CreateWhatsAppMessageInput {
   whatsappLink: string;
 }
 
+export interface UpsertFcmTokenInput {
+  token: string;
+  userId?: number | null;
+  deviceLabel?: string | null;
+  userAgent?: string | null;
+}
+
 export interface IStorage {
   // Auth
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -87,10 +94,6 @@ export interface IStorage {
   getChickenManagement(): Promise<ChickenManagement[]>;
   createChickenManagement(data: z.infer<typeof api.chickens.create.input>): Promise<ChickenManagement>;
 
-  // Disease Tracker
-  getDiseaseRecords(): Promise<DiseaseRecord[]>;
-  createDiseaseRecord(data: z.infer<typeof api.diseases.create.input>): Promise<DiseaseRecord>;
-
   // Inventory
   getInventory(): Promise<Inventory[]>;
   createInventory(data: z.infer<typeof api.inventory.create.input>): Promise<Inventory>;
@@ -111,6 +114,11 @@ export interface IStorage {
   // WhatsApp messages
   getWhatsAppMessages(limit?: number): Promise<WhatsAppMessage[]>;
   createWhatsAppMessage(input: CreateWhatsAppMessageInput): Promise<WhatsAppMessage>;
+
+  // FCM tokens
+  getFcmTokens(): Promise<FcmToken[]>;
+  upsertFcmToken(input: UpsertFcmTokenInput): Promise<FcmToken>;
+  deactivateFcmToken(token: string): Promise<void>;
 
   // Vaccinations
   getVaccinations(): Promise<Vaccination[]>;
@@ -275,34 +283,6 @@ export class DatabaseStorage implements IStorage {
 
     if (!record) {
       throw new Error("Failed to create chicken management record.");
-    }
-
-    return record;
-  }
-
-  // Disease Records
-  async getDiseaseRecords(): Promise<DiseaseRecord[]> {
-    const database = await this.database();
-    return database
-      .select()
-      .from(diseaseRecords)
-      .orderBy(desc(diseaseRecords.date), desc(diseaseRecords.id));
-  }
-
-  async createDiseaseRecord(data: z.infer<typeof api.diseases.create.input>): Promise<DiseaseRecord> {
-    const database = await this.database();
-    const [record] = await database
-      .insert(diseaseRecords)
-      .values({
-        date: toDateOnly(data.date),
-        diseaseName: data.diseaseName,
-        chickensAffected: toNumber(data.chickensAffected),
-        treatment: data.treatment,
-      })
-      .returning();
-
-    if (!record) {
-      throw new Error("Failed to create disease record.");
     }
 
     return record;
@@ -484,6 +464,76 @@ export class DatabaseStorage implements IStorage {
     return message;
   }
 
+  async getFcmTokens(): Promise<FcmToken[]> {
+    const database = await this.database();
+    return database
+      .select()
+      .from(fcmTokens)
+      .where(eq(fcmTokens.isActive, true))
+      .orderBy(desc(fcmTokens.updatedAt), desc(fcmTokens.id));
+  }
+
+  async upsertFcmToken(input: UpsertFcmTokenInput): Promise<FcmToken> {
+    const database = await this.database();
+    const [existing] = await database
+      .select()
+      .from(fcmTokens)
+      .where(eq(fcmTokens.token, input.token))
+      .limit(1);
+
+    if (existing) {
+      const [updated] = await database
+        .update(fcmTokens)
+        .set({
+          userId: input.userId ?? existing.userId ?? null,
+          deviceLabel: input.deviceLabel ?? existing.deviceLabel ?? null,
+          userAgent: input.userAgent ?? existing.userAgent ?? null,
+          isActive: true,
+          lastSeenAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(fcmTokens.id, existing.id))
+        .returning();
+
+      if (!updated) {
+        throw new Error("Failed to update FCM token.");
+      }
+
+      return updated;
+    }
+
+    const [created] = await database
+      .insert(fcmTokens)
+      .values({
+        userId: input.userId ?? null,
+        token: input.token,
+        deviceLabel: input.deviceLabel ?? null,
+        userAgent: input.userAgent ?? null,
+        isActive: true,
+        lastSeenAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    if (!created) {
+      throw new Error("Failed to store FCM token.");
+    }
+
+    return created;
+  }
+
+  async deactivateFcmToken(token: string): Promise<void> {
+    const database = await this.database();
+    await database
+      .update(fcmTokens)
+      .set({
+        isActive: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(fcmTokens.token, token));
+  }
+
   // Vaccinations
   async getVaccinations(): Promise<Vaccination[]> {
     const database = await this.database();
@@ -519,12 +569,12 @@ export class MemoryStorage implements IStorage {
   private eggSalesId = 1;
   private chickenSalesId = 1;
   private chickenManagementId = 1;
-  private diseaseId = 1;
   private inventoryId = 1;
   private expenseId = 1;
   private feedMetricId = 1;
   private alertEventId = 1;
   private whatsappMessageId = 1;
+  private fcmTokenId = 1;
   private vaccinationId = 1;
 
   private userRecords: User[] = [];
@@ -532,12 +582,12 @@ export class MemoryStorage implements IStorage {
   private eggSalesRecords: EggSales[] = [];
   private chickenSalesRecords: ChickenSale[] = [];
   private chickenRecords: ChickenManagement[] = [];
-  private diseaseRecordsList: DiseaseRecord[] = [];
   private inventoryRecords: Inventory[] = [];
   private expenseRecords: Expense[] = [];
   private feedMetricRecords: FeedMetric[] = [];
   private alertEventRecords: AlertEvent[] = [];
   private whatsappMessageRecords: WhatsAppMessage[] = [];
+  private fcmTokenRecords: FcmToken[] = [];
   private vaccinationRecords: Vaccination[] = [];
 
   async getUserByEmail(email: string): Promise<User | undefined> {
@@ -638,24 +688,6 @@ export class MemoryStorage implements IStorage {
       chickenType: data.chickenType ?? "Pure",
     };
     this.chickenRecords.push(record);
-    return record;
-  }
-
-  async getDiseaseRecords(): Promise<DiseaseRecord[]> {
-    return [...this.diseaseRecordsList].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-  }
-
-  async createDiseaseRecord(data: z.infer<typeof api.diseases.create.input>): Promise<DiseaseRecord> {
-    const record: DiseaseRecord = {
-      id: this.diseaseId++,
-      date: toDateOnly(data.date),
-      diseaseName: data.diseaseName,
-      chickensAffected: Number(data.chickensAffected),
-      treatment: data.treatment,
-    };
-    this.diseaseRecordsList.push(record);
     return record;
   }
 
@@ -777,6 +809,49 @@ export class MemoryStorage implements IStorage {
     return record;
   }
 
+  async getFcmTokens(): Promise<FcmToken[]> {
+    return [...this.fcmTokenRecords]
+      .filter((record) => record.isActive)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  async upsertFcmToken(input: UpsertFcmTokenInput): Promise<FcmToken> {
+    const existing = this.fcmTokenRecords.find((record) => record.token === input.token);
+
+    if (existing) {
+      existing.userId = input.userId ?? existing.userId ?? null;
+      existing.deviceLabel = input.deviceLabel ?? existing.deviceLabel ?? null;
+      existing.userAgent = input.userAgent ?? existing.userAgent ?? null;
+      existing.isActive = true;
+      existing.lastSeenAt = new Date();
+      existing.updatedAt = new Date();
+      return existing;
+    }
+
+    const record: FcmToken = {
+      id: this.fcmTokenId++,
+      userId: input.userId ?? null,
+      token: input.token,
+      deviceLabel: input.deviceLabel ?? null,
+      userAgent: input.userAgent ?? null,
+      isActive: true,
+      lastSeenAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.fcmTokenRecords.push(record);
+    return record;
+  }
+
+  async deactivateFcmToken(token: string): Promise<void> {
+    const existing = this.fcmTokenRecords.find((record) => record.token === token);
+    if (!existing) {
+      return;
+    }
+    existing.isActive = false;
+    existing.updatedAt = new Date();
+  }
+
   async getVaccinations(): Promise<Vaccination[]> {
     return [...this.vaccinationRecords].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
@@ -796,8 +871,7 @@ export class MemoryStorage implements IStorage {
   }
 }
 
-const shouldUseMemoryStorage =
-  !isPostgresConfigured && process.env.NODE_ENV !== "production";
+const shouldUseMemoryStorage = !isPostgresConfigured;
 
 export const storage: IStorage = shouldUseMemoryStorage
   ? new MemoryStorage()

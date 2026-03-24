@@ -282,3 +282,138 @@ html {
 * {
   @apply transition-colors duration-200;
 }
+
+.monitoring-shell {
+  position: relative;
+}
+
+.monitoring-hero {
+  background:
+    radial-gradient(circle at top right, rgba(44, 122, 123, 0.16), transparent 35%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(241, 248, 245, 0.88));
+}
+
+.monitoring-kicker {
+  color: hsl(var(--primary));
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.monitoring-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.monitoring-card {
+  min-height: 180px;
+}
+
+.monitoring-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.monitoring-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.monitoring-pill-ok {
+  background: rgba(46, 125, 50, 0.12);
+  color: #1f6d24;
+}
+
+.monitoring-pill-warn {
+  background: rgba(221, 107, 32, 0.12);
+  color: #b45309;
+}
+
+.monitoring-pill-alert {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.monitoring-pill-neutral {
+  background: rgba(44, 122, 123, 0.1);
+  color: #285e61;
+}
+
+.monitoring-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 1rem;
+}
+
+.monitoring-icon-ok {
+  background: rgba(46, 125, 50, 0.12);
+  color: #1f6d24;
+}
+
+.monitoring-icon-warn {
+  background: rgba(221, 107, 32, 0.12);
+  color: #b45309;
+}
+
+.monitoring-icon-alert {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.monitoring-chart-panel,
+.monitoring-device-panel {
+  min-height: 100%;
+}
+
+.monitoring-chart-card {
+  border: 1px solid rgba(44, 122, 123, 0.08);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 1rem;
+}
+
+.monitoring-chart-canvas {
+  position: relative;
+  height: 240px;
+}
+
+.monitoring-device-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(44, 122, 123, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 1rem;
+}
+
+@media (max-width: 768px) {
+  .monitoring-device-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .monitoring-status-bar {
+    gap: 0.5rem;
+  }
+
+  .monitoring-chart-canvas {
+    height: 200px;
+  }
+}

@@ -1,52 +1,96 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
-import { Card, Button, Input, Select } from "@/components/ui-kit";
+import { Card, Button, Input, Select, Modal } from "@/components/ui-kit";
 import {
-  useAIChat,
-  useAIDiseaseDetection,
   useAIEggPrediction,
   useAIFeedRecommendation,
   useAISmartReport,
 } from "@/hooks/use-poultry";
 import { api } from "@shared/routes";
-import {
-  Bot,
-  Send,
-  User,
-  Upload,
-  TrendingUp,
-  Package,
-  FileBarChart,
-} from "lucide-react";
-import { motion } from "framer-motion";
+import { TrendingUp, Package, FileBarChart, Mic, MicOff, Volume2 } from "lucide-react";
+import { toApiUrl } from "@/lib/api-url";
 
-type DiseaseDetectionResult = z.infer<typeof api.ai.diseaseDetection.responses[200]>;
+type BrowserSpeechRecognitionResultAlternative = {
+  transcript: string;
+};
+
+type BrowserSpeechRecognitionResult = {
+  isFinal: boolean;
+  0?: BrowserSpeechRecognitionResultAlternative;
+};
+
+type BrowserSpeechRecognitionEvent = {
+  resultIndex: number;
+  results: ArrayLike<BrowserSpeechRecognitionResult>;
+};
+
+type BrowserSpeechRecognitionErrorEvent = {
+  error?: string;
+};
+
 type EggPredictionResult = z.infer<typeof api.ai.eggPrediction.responses[200]>;
 type FeedRecommendationResult = z.infer<typeof api.ai.feedRecommendation.responses[200]>;
 type SmartReportResult = z.infer<typeof api.ai.smartReport.responses[200]>;
+type BrowserSpeechRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+};
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Failed to read image file"));
-    reader.readAsDataURL(file);
-  });
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  }
 }
 
-export default function AIAssistant() {
-  const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([
-    {
-      role: "ai",
-      text: "Hello! I can help with disease detection, egg prediction, feed plans, and smart reports.",
-    },
-  ]);
-  const [chatInput, setChatInput] = useState("");
+type PendingExpense = {
+  amount: string;
+  expenseType: string;
+  description: string;
+  date: string;
+  sourceText: string;
+};
 
-  const [diseaseFile, setDiseaseFile] = useState<File | null>(null);
-  const [diseaseNotes, setDiseaseNotes] = useState("");
-  const [diseaseResult, setDiseaseResult] = useState<DiseaseDetectionResult | null>(null);
+type VoiceMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  timestamp: string;
+};
+
+const WAKE_WORD = "hello pf";
+const WAKE_PATTERNS = [
+  /\bhello\s*p\s*f\b/i,
+  /\bhello\s*pf\b/i,
+  /\bhey\s*pf\b/i,
+  /\bhi\s*pf\b/i,
+];
+
+export default function AIAssistant() {
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const shouldContinueRef = useRef(false);
+
+  const [supportsSpeech, setSupportsSpeech] = useState(true);
+  const [isListening, setIsListening] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [awaitingCommand, setAwaitingCommand] = useState(false);
+  const [continuousListening, setContinuousListening] = useState(false);
+  const [language, setLanguage] = useState("en-US");
+  const [messages, setMessages] = useState<VoiceMessage[]>([]);
+  const [manualInput, setManualInput] = useState("");
+  const [pendingExpense, setPendingExpense] = useState<PendingExpense | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceStatus, setVoiceStatus] = useState("");
 
   const [predictionDays, setPredictionDays] = useState("30");
   const [predictionResult, setPredictionResult] = useState<EggPredictionResult | null>(null);
@@ -59,54 +103,323 @@ export default function AIAssistant() {
   const [reportPeriod, setReportPeriod] = useState<"weekly" | "monthly">("weekly");
   const [reportResult, setReportResult] = useState<SmartReportResult | null>(null);
 
-  const { mutateAsync: sendMessage, isPending: isChatPending } = useAIChat();
-  const { mutateAsync: detectDisease, isPending: isDiseasePending } = useAIDiseaseDetection();
   const { mutateAsync: predictEggs, isPending: isPredictionPending } = useAIEggPrediction();
   const { mutateAsync: getFeedRecommendation, isPending: isFeedPending } = useAIFeedRecommendation();
   const { mutateAsync: generateReport, isPending: isReportPending } = useAISmartReport();
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const assistantStatus = useMemo(() => {
+    if (isListening) return "Listening...";
+    if (awaitingCommand) return "Say your command...";
+    if (isThinking) return "Thinking...";
+    return "Idle";
+  }, [isListening, awaitingCommand, isThinking]);
+
+  const shouldAutoListen = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("listen") === "1";
+  }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const SpeechRecognition =
+      typeof window !== "undefined"
+        ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+        : undefined;
 
-  const handleChatSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || isChatPending) return;
+    if (!SpeechRecognition) {
+      setSupportsSpeech(false);
+      return;
+    }
 
-    const userMsg = chatInput.trim();
-    setChatInput("");
-    setMessages((prev) => [...prev, { role: "user", text: userMsg }]);
+    const recognition = new SpeechRecognition();
+    recognition.lang = language;
+    recognition.interimResults = false;
+    recognition.continuous = continuousListening;
 
+    recognition.onresult = (event) => {
+      let finalTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        if (event.results[i]?.isFinal) {
+          finalTranscript += event.results[i][0]?.transcript ?? "";
+        }
+      }
+      const transcript = finalTranscript.trim();
+      if (transcript) {
+        void handleTranscript(transcript);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      if (shouldContinueRef.current) {
+        startListening();
+      }
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+    };
+  }, [language, continuousListening]);
+
+  useEffect(() => {
+    if (supportsSpeech && shouldAutoListen) {
+      startListening();
+    }
+  }, [supportsSpeech, shouldAutoListen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      setVoiceStatus("Text-to-speech is not supported in this browser.");
+      return;
+    }
+
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      setAvailableVoices(voices);
+      if (voices.length === 0) {
+        setVoiceStatus("Voice list is still loading. Try again in a moment.");
+      } else {
+        const hasMatch = voices.some((voice) =>
+          voice.lang?.toLowerCase().startsWith(language.toLowerCase()),
+        );
+        setVoiceStatus(
+          hasMatch
+            ? ""
+            : `No ${language} voice found. Speech will use the default voice.`,
+        );
+      }
+    };
+
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    return () => {
+      if (window.speechSynthesis.onvoiceschanged === loadVoices) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, [language]);
+
+  useEffect(() => {
+    shouldContinueRef.current = continuousListening;
+  }, [continuousListening]);
+
+  const startListening = () => {
+    if (!recognitionRef.current) return;
     try {
-      const res = await sendMessage(userMsg);
-      setMessages((prev) => [...prev, { role: "ai", text: res.response }]);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Unable to get AI response right now.";
-      setMessages((prev) => [...prev, { role: "ai", text: errorMessage }]);
+      recognitionRef.current.lang = language;
+      recognitionRef.current.continuous = continuousListening;
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch {
+      setIsListening(false);
     }
   };
 
-  const handleDiseaseDetection = async () => {
-    if (!diseaseFile || isDiseasePending) return;
+  const stopListening = () => {
+    shouldContinueRef.current = false;
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  };
+
+  const speak = (text: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language;
+    const matchedVoice =
+      availableVoices.find((voice) =>
+        voice.lang?.toLowerCase().startsWith(language.toLowerCase()),
+      ) ?? null;
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
+    }
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const parseExpenseCommand = (text: string): PendingExpense | null => {
+    if (!/add expense/i.test(text)) return null;
+
+    const amountMatch = text.match(/(\d+(?:\.\d+)?)/);
+    const amount = amountMatch ? amountMatch[1] : "";
+
+    const date = (() => {
+      const lower = text.toLowerCase();
+      const today = new Date();
+      if (lower.includes("today")) return today.toISOString().split("T")[0];
+      if (lower.includes("yesterday")) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - 1);
+        return d.toISOString().split("T")[0];
+      }
+      if (lower.includes("tomorrow")) {
+        const d = new Date(today);
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().split("T")[0];
+      }
+      const isoMatch = lower.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+      if (isoMatch) return isoMatch[1];
+      const slashMatch = lower.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
+      if (slashMatch) {
+        const month = slashMatch[1].padStart(2, "0");
+        const day = slashMatch[2].padStart(2, "0");
+        const year = slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3];
+        return `${year}-${month}-${day}`;
+      }
+      return today.toISOString().split("T")[0];
+    })();
+
+    const cleaned = text
+      .replace(/add expense/i, "")
+      .replace(/rupees|rs\.?|inr/gi, "")
+      .replace(/\b(today|yesterday|tomorrow)\b/gi, "")
+      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "")
+      .replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g, "")
+      .replace(/\d+(?:\.\d+)?/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return {
+      amount,
+      expenseType: cleaned || "General",
+      description: cleaned ? `Voice entry: ${cleaned}` : "Voice entry: general expense",
+      date,
+      sourceText: text,
+    };
+  };
+
+  const handleExpenseCommand = (text: string): boolean => {
+    const parsed = parseExpenseCommand(text);
+    if (!parsed) return false;
+    if (!parsed.amount) {
+      const reply = "Please provide an amount for the expense. Example: Add expense 2500 feed today.";
+      appendMessage("assistant", reply);
+      speak(reply);
+      return true;
+    }
+    setPendingExpense(parsed);
+    return true;
+  };
+
+  const createExpense = async () => {
+    if (!pendingExpense) return;
+    const amountValue = Number(pendingExpense.amount);
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      const reply = "Please enter a valid expense amount before confirming.";
+      appendMessage("assistant", reply);
+      speak(reply);
+      return;
+    }
 
     try {
-      const imageBase64 = await fileToDataUrl(diseaseFile);
-      const result = await detectDisease({ imageBase64, notes: diseaseNotes || undefined });
-      setDiseaseResult(result);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Disease detection failed.";
-      setDiseaseResult({
-        disease: "Detection failed",
-        confidence: 0,
-        severity: "low",
-        suggestedTreatment: errorMessage,
-        observations: "Please retry with a clearer image.",
+      const response = await fetch(toApiUrl("/api/expenses"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: pendingExpense.date,
+          expenseType: pendingExpense.expenseType,
+          amount: amountValue,
+          description: pendingExpense.description,
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error(`Expense create failed (${response.status})`);
+      }
+
+      const reply = `Expense saved: ${pendingExpense.expenseType} for Rs ${amountValue} on ${pendingExpense.date}.`;
+      appendMessage("assistant", reply);
+      speak(reply);
+      setPendingExpense(null);
+    } catch {
+      const reply = "Sorry, I couldn't save the expense right now. Please try again.";
+      appendMessage("assistant", reply);
+      speak(reply);
     }
+  };
+
+  const appendMessage = (role: VoiceMessage["role"], text: string) => {
+    const timestamp = new Date().toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    setMessages((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${Math.random()}`, role, text, timestamp },
+    ]);
+  };
+
+  const sendToAI = async (text: string) => {
+    setIsThinking(true);
+    appendMessage("user", text);
+
+    try {
+      const response = await fetch(toApiUrl("/api/ai"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI request failed (${response.status})`);
+      }
+
+      const data = (await response.json()) as { response?: string };
+      const reply = data.response || "I could not generate a response right now.";
+      appendMessage("assistant", reply);
+      speak(reply);
+    } catch {
+      const reply = "Sorry, I could not reach the AI service. Please try again.";
+      appendMessage("assistant", reply);
+      speak(reply);
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  const handleTranscript = async (transcript: string) => {
+    const wakeMatch = WAKE_PATTERNS.find((pattern) => pattern.test(transcript));
+    if (wakeMatch) {
+      const afterWake = transcript.replace(wakeMatch, " ").trim();
+      const wakeResponse = "Yes, how can I help you?";
+      appendMessage("assistant", wakeResponse);
+      speak(wakeResponse);
+      if (afterWake) {
+        await sendToAI(afterWake);
+      } else {
+        setAwaitingCommand(true);
+      }
+      return;
+    }
+
+    if (awaitingCommand) {
+      setAwaitingCommand(false);
+      if (handleExpenseCommand(transcript)) return;
+      await sendToAI(transcript);
+      return;
+    }
+
+    if (!continuousListening) {
+      if (handleExpenseCommand(transcript)) return;
+      await sendToAI(transcript);
+    }
+  };
+
+  const handleManualSend = async () => {
+    const text = manualInput.trim();
+    if (!text) return;
+    setManualInput("");
+    if (handleExpenseCommand(text)) return;
+    await sendToAI(text);
   };
 
   const handleEggPrediction = async () => {
@@ -114,7 +427,7 @@ export default function AIAssistant() {
     try {
       const result = await predictEggs({ days: Number(predictionDays || 30) });
       setPredictionResult(result);
-    } catch (err) {
+    } catch {
       setPredictionResult(null);
     }
   };
@@ -128,7 +441,7 @@ export default function AIAssistant() {
         weather,
       });
       setFeedResult(result);
-    } catch (err) {
+    } catch {
       setFeedResult(null);
     }
   };
@@ -138,7 +451,7 @@ export default function AIAssistant() {
     try {
       const result = await generateReport({ period: reportPeriod });
       setReportResult(result);
-    } catch (err) {
+    } catch {
       setReportResult(null);
     }
   };
@@ -146,121 +459,103 @@ export default function AIAssistant() {
   return (
     <AppLayout>
       <PageHeader
-        title="AI Assistant Suite"
-        description="Chatbot + disease detection + production prediction + feed recommendation + smart reporting."
+        title="AI Poultry Assistant"
+        description="Voice assistant, production predictions, feed recommendations, and smart reports."
       />
 
-      <Card className="h-[560px] flex flex-col p-0 overflow-hidden border-border/50 mb-8">
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-background/50">
-          {messages.map((msg, i) => (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              key={i}
-              className={`flex gap-4 max-w-[90%] ${msg.role === "user" ? "ml-auto flex-row-reverse" : ""}`}
-            >
-              <div
-                className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center shadow-md ${
-                  msg.role === "ai"
-                    ? "bg-primary text-white"
-                    : "bg-white text-primary border border-primary/20"
-                }`}
-              >
-                {msg.role === "ai" ? <Bot size={20} /> : <User size={20} />}
-              </div>
-              <div
-                className={`p-4 rounded-2xl text-[15px] leading-relaxed ${
-                  msg.role === "ai"
-                    ? "bg-white border border-border/50 shadow-sm text-foreground"
-                    : "bg-primary text-white shadow-lg shadow-primary/20"
-                }`}
-              >
-                {msg.text}
-              </div>
-            </motion.div>
-          ))}
-
-          {isChatPending && (
-            <div className="flex gap-4 max-w-[90%]">
-              <div className="w-10 h-10 shrink-0 rounded-full bg-primary text-white flex items-center justify-center shadow-md">
-                <Bot size={20} />
-              </div>
-              <div className="p-4 rounded-2xl bg-white border border-border/50 shadow-sm text-foreground flex gap-1">
-                <span className="w-2 h-2 bg-primary/40 rounded-full animate-bounce" />
-                <span
-                  className="w-2 h-2 bg-primary/40 rounded-full animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                />
-                <span
-                  className="w-2 h-2 bg-primary/40 rounded-full animate-bounce"
-                  style={{ animationDelay: "0.4s" }}
-                />
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="p-4 bg-white border-t border-border/50">
-          <form onSubmit={handleChatSend} className="flex gap-2 relative">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask questions about health, eggs, feed, or profit..."
-              className="flex-1 bg-background border-2 border-border/50 rounded-full pl-6 pr-14 py-4 focus:outline-none focus:border-primary transition-colors text-base"
-              disabled={isChatPending}
-            />
-            <button
-              type="submit"
-              disabled={!chatInput.trim() || isChatPending}
-              className="absolute right-2 top-2 bottom-2 w-12 bg-primary text-white rounded-full flex items-center justify-center hover:bg-primary-light transition-colors disabled:opacity-50"
-            >
-              <Send size={18} className="ml-1" />
-            </button>
-          </form>
-        </div>
-      </Card>
-
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Upload size={20} className="text-primary" />
-            <h3 className="text-xl font-bold font-display">AI Disease Detection</h3>
+        <Card className="space-y-5 xl:col-span-2">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h3 className="text-2xl font-bold font-display">Voice AI Assistant</h3>
+              <p className="text-sm text-muted-foreground">
+                Say "{WAKE_WORD}" to activate, or use the mic button to speak.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                variant={isListening ? "secondary" : "primary"}
+                onClick={isListening ? stopListening : startListening}
+                disabled={!supportsSpeech}
+              >
+                {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                {isListening ? "Stop" : "Start"}
+              </Button>
+              <Button
+                variant={continuousListening ? "gradient" : "outline"}
+                onClick={() => setContinuousListening((prev) => !prev)}
+                disabled={!supportsSpeech}
+              >
+                <Volume2 size={18} />
+                {continuousListening ? "Continuous On" : "Continuous Off"}
+              </Button>
+            </div>
           </div>
-          <div className="space-y-3">
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setDiseaseFile(e.target.files?.[0] || null)}
-            />
-            <div className="w-full flex flex-col gap-1.5">
-              <label className="text-sm font-semibold text-foreground/80 ml-1">
-                Notes (optional)
-              </label>
-              <textarea
-                className="w-full px-4 py-3 rounded-xl bg-white/50 border-2 border-border/50 focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all resize-none h-24"
-                placeholder="Symptoms: cough, twisted neck, diarrhea..."
-                value={diseaseNotes}
-                onChange={(e) => setDiseaseNotes(e.target.value)}
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Select
+              label="Language"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              disabled={!supportsSpeech}
+            >
+              <option value="en-US">English (US)</option>
+              <option value="hi-IN">Hindi (India)</option>
+              <option value="mr-IN">Marathi (India)</option>
+            </Select>
+            <div className="md:col-span-2">
+              <Input
+                label="Type a question (optional)"
+                value={manualInput}
+                onChange={(e) => setManualInput(e.target.value)}
+                placeholder="e.g., Show farm report"
               />
             </div>
-            <Button onClick={handleDiseaseDetection} disabled={!diseaseFile || isDiseasePending}>
-              {isDiseasePending ? "Analyzing..." : "Upload Chicken Image"}
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-primary">{assistantStatus}</div>
+            <Button variant="outline" onClick={handleManualSend} disabled={!manualInput.trim()}>
+              Send
             </Button>
           </div>
-          {diseaseResult && (
-            <div className="rounded-xl border border-border/60 bg-background/60 p-4 space-y-2">
-              <p className="font-semibold">AI Result: {diseaseResult.disease}</p>
-              <p className="text-sm text-muted-foreground">
-                Confidence: {diseaseResult.confidence}% | Severity: {diseaseResult.severity}
-              </p>
-              <p className="text-sm">
-                <span className="font-semibold">Suggested Treatment:</span>{" "}
-                {diseaseResult.suggestedTreatment}
-              </p>
-              <p className="text-sm text-muted-foreground">{diseaseResult.observations}</p>
+
+          <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+            {messages.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                Try: "How many eggs today?", "Show feed data", "Add expense 2500 for feed",
+                "Give poultry health tips", "How many chickens are healthy?", "Show sick chickens",
+                "Chicken mortality today", or "Show farm report".
+              </div>
+            ) : (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`rounded-xl p-3 border ${
+                    msg.role === "user"
+                      ? "bg-white/70 border-primary/20"
+                      : "bg-primary/5 border-primary/10"
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                    <span className="font-semibold">
+                      {msg.role === "user" ? "You" : "Assistant"}
+                    </span>
+                    <span>{msg.timestamp}</span>
+                  </div>
+                  <p className="text-sm whitespace-pre-line">{msg.text}</p>
+                </div>
+              ))
+            )}
+          </div>
+
+          {!supportsSpeech && (
+            <div className="text-sm text-destructive">
+              Voice features are not supported in this browser. Please use the text input.
             </div>
+          )}
+          {supportsSpeech && voiceStatus && (
+            <div className="text-sm text-muted-foreground">{voiceStatus}</div>
           )}
         </Card>
 
@@ -400,6 +695,62 @@ export default function AIAssistant() {
           )}
         </Card>
       </div>
+
+      <Modal
+        isOpen={Boolean(pendingExpense)}
+        onClose={() => setPendingExpense(null)}
+        title="Confirm Expense"
+      >
+        {pendingExpense && (
+          <div className="space-y-4">
+            <Input
+              label="Amount (Rs)"
+              type="number"
+              min="0"
+              value={pendingExpense.amount}
+              onChange={(e) =>
+                setPendingExpense((prev) =>
+                  prev ? { ...prev, amount: e.target.value } : prev,
+                )
+              }
+            />
+            <Input
+              label="Expense Type"
+              value={pendingExpense.expenseType}
+              onChange={(e) =>
+                setPendingExpense((prev) =>
+                  prev ? { ...prev, expenseType: e.target.value } : prev,
+                )
+              }
+            />
+            <Input
+              label="Description"
+              value={pendingExpense.description}
+              onChange={(e) =>
+                setPendingExpense((prev) =>
+                  prev ? { ...prev, description: e.target.value } : prev,
+                )
+              }
+            />
+            <Input
+              label="Date"
+              type="date"
+              value={pendingExpense.date}
+              onChange={(e) =>
+                setPendingExpense((prev) =>
+                  prev ? { ...prev, date: e.target.value } : prev,
+                )
+              }
+            />
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setPendingExpense(null)}>
+                Cancel
+              </Button>
+              <Button onClick={createExpense}>Confirm & Save</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </AppLayout>
   );
 }
