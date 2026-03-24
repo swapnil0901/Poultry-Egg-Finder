@@ -82,6 +82,7 @@ export default function AIAssistant() {
   const { t } = useI18n();
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const shouldContinueRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [supportsSpeech, setSupportsSpeech] = useState(true);
   const [isListening, setIsListening] = useState(false);
@@ -179,7 +180,7 @@ export default function AIAssistant() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) {
-      setVoiceStatus("Text-to-speech is not supported in this browser.");
+      setVoiceStatus("Text-to-speech is not supported in this browser. AI voice fallback will be used when available.");
       return;
     }
 
@@ -187,7 +188,7 @@ export default function AIAssistant() {
       const voices = window.speechSynthesis.getVoices();
       setAvailableVoices(voices);
       if (voices.length === 0) {
-        setVoiceStatus("Voice list is still loading. Try again in a moment.");
+        setVoiceStatus("Voice list is still loading. AI voice fallback will be used if needed.");
       } else {
         const hasMatch = voices.some((voice) =>
           voice.lang?.toLowerCase().startsWith(language.toLowerCase()),
@@ -195,7 +196,7 @@ export default function AIAssistant() {
         setVoiceStatus(
           hasMatch
             ? ""
-            : `No ${language} voice found. Speech will use the default voice.`,
+            : `No ${language} browser voice found. AI voice fallback will be used.`,
         );
       }
     };
@@ -207,6 +208,8 @@ export default function AIAssistant() {
       if (window.speechSynthesis.onvoiceschanged === loadVoices) {
         window.speechSynthesis.onvoiceschanged = null;
       }
+      audioRef.current?.pause();
+      audioRef.current = null;
     };
   }, [language]);
 
@@ -233,14 +236,60 @@ export default function AIAssistant() {
   };
 
   const speak = (text: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = language;
+    void speakAsync(text);
+  };
+
+  const speakAsync = async (text: string) => {
+    if (typeof window === "undefined") return;
+
+    window.speechSynthesis?.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
     const matchedVoice =
       availableVoices.find((voice) =>
         voice.lang?.toLowerCase().startsWith(language.toLowerCase()),
       ) ?? null;
+    const shouldUseAiVoice = language !== "en-US" || !matchedVoice;
+
+    if (shouldUseAiVoice) {
+      try {
+        const response = await fetch(toApiUrl("/api/ai/speech"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, language }),
+        });
+
+        if (response.ok) {
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+          audioRef.current = audio;
+          audio.onended = () => {
+            URL.revokeObjectURL(audioUrl);
+            if (audioRef.current === audio) {
+              audioRef.current = null;
+            }
+          };
+          audio.onerror = () => {
+            URL.revokeObjectURL(audioUrl);
+            if (audioRef.current === audio) {
+              audioRef.current = null;
+            }
+          };
+          await audio.play();
+          return;
+        }
+      } catch (error) {
+        console.error("AI voice playback failed, falling back to browser speech:", error);
+      }
+    }
+
+    if (!window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = language;
     if (matchedVoice) {
       utterance.voice = matchedVoice;
     }

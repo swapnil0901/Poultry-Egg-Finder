@@ -558,6 +558,32 @@ function getAssistantLanguageMeta(language: AssistantLanguage | undefined): {
   }
 }
 
+function getSpeechGenerationMeta(language: AssistantLanguage | undefined): {
+  voice: string;
+  instructions: string;
+} {
+  switch (language) {
+    case "hi-IN":
+      return {
+        voice: "sage",
+        instructions:
+          "Speak naturally in Hindi for an Indian poultry farmer. Keep the pronunciation clear and conversational.",
+      };
+    case "mr-IN":
+      return {
+        voice: "sage",
+        instructions:
+          "Speak naturally in Marathi for an Indian poultry farmer. Keep the pronunciation clear and conversational.",
+      };
+    default:
+      return {
+        voice: "alloy",
+        instructions:
+          "Speak naturally in English for an Indian poultry farming assistant. Keep the pronunciation clear and conversational.",
+      };
+  }
+}
+
 async function localizeAssistantText(
   text: string,
   language: AssistantLanguage | undefined,
@@ -1567,6 +1593,37 @@ export async function registerRoutes(
     } catch (err) {
       console.error(err);
       res.status(400).json({ message: "Invalid AI request payload" });
+    }
+  });
+
+  // AI Egg Production Prediction
+  app.post(api.ai.speech.path, async (req, res) => {
+    try {
+      const { text, language } = api.ai.speech.input.parse(req.body);
+
+      if (!openai) {
+        return res.status(503).json({ message: "AI speech service is not configured." });
+      }
+
+      const speechMeta = getSpeechGenerationMeta(language);
+      const speechResponse = await openai.audio.speech.create({
+        model: "gpt-4o-mini-tts",
+        voice: speechMeta.voice,
+        input: text,
+        response_format: "mp3",
+        instructions: speechMeta.instructions,
+      });
+
+      const audioBuffer = Buffer.from(await speechResponse.arrayBuffer());
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(audioBuffer);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("AI speech generation failed:", err);
+      return res.status(500).json({ message: "Unable to generate speech audio" });
     }
   });
 

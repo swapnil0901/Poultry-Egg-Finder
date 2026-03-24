@@ -401,6 +401,18 @@ export const api = {
         500: errorSchemas.internal,
       }
     },
+    speech: {
+      method: 'POST' as const,
+      path: '/api/ai/speech' as const,
+      input: z.object({
+        text: z.string().min(1).max(4096),
+        language: z.enum(["en-US", "hi-IN", "mr-IN"]).optional(),
+      }),
+      responses: {
+        200: z.any(),
+        500: errorSchemas.internal,
+      }
+    },
     eggPrediction: {
       method: 'POST' as const,
       path: '/api/ai/egg-prediction' as const,
