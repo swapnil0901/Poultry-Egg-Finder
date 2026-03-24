@@ -12,6 +12,7 @@ import {
   notifyVaccinationReminderIfNeeded,
 } from "./services/notifications.js";
 import { sendPushNotificationToAll } from "./services/fcm.js";
+import { maybeSendSensorAlerts } from "./services/whatsapp-alerts.js";
 import { ensureDatabaseReady, isPostgresConfigured, pool } from "./db.js";
 
 function resolveOpenAIBaseUrl(): string | undefined {
@@ -914,13 +915,24 @@ export async function registerRoutes(
         throw new Error("Sensor insert returned no row.");
       }
 
+      const alertSent = await maybeSendSensorAlerts({
+        temperature,
+        ammonia,
+      });
+
       return res.status(201).json({
+        success: true,
+        alertSent,
         message: "Sensor data stored successfully.",
         data: toStoredSensorResponse(row),
       });
     } catch (error) {
       console.error("Failed to store sensor data:", error);
-      return res.status(500).json({ message: "Unable to store sensor data." });
+      return res.status(500).json({
+        success: false,
+        alertSent: false,
+        message: "Unable to store sensor data.",
+      });
     }
   });
 
