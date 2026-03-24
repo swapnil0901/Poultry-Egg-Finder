@@ -1,58 +1,10 @@
 import Twilio from "twilio";
 
-const ALERT_COOLDOWN_MS = 5 * 60 * 1000;
-
-type AlertType = "temperature" | "ammonia";
-
-type AlertState = {
-  active: boolean;
-  lastSentAt: number | null;
-};
-
-type AlertStore = Record<AlertType, AlertState>;
+const ALERT_COOLDOWN_MS = 5_000;
 
 declare global {
   // eslint-disable-next-line no-var
-  var __sensorWhatsappAlertState__: AlertStore | undefined;
-}
-
-function getAlertStore(): AlertStore {
-  if (!globalThis.__sensorWhatsappAlertState__) {
-    globalThis.__sensorWhatsappAlertState__ = {
-      temperature: { active: false, lastSentAt: null },
-      ammonia: { active: false, lastSentAt: null },
-    };
-  }
-
-  return globalThis.__sensorWhatsappAlertState__;
-}
-
-function shouldSendAlert(type: AlertType, isActive: boolean, now = Date.now()): boolean {
-  const store = getAlertStore();
-  const state = store[type];
-
-  if (!isActive) {
-    state.active = false;
-    return false;
-  }
-
-  if (!state.active) {
-    return true;
-  }
-
-  if (state.lastSentAt === null) {
-    return true;
-  }
-
-  return now - state.lastSentAt >= ALERT_COOLDOWN_MS;
-}
-
-function markAlertSent(type: AlertType, now = Date.now()): void {
-  const store = getAlertStore();
-  store[type] = {
-    active: true,
-    lastSentAt: now,
-  };
+  var lastAlertTime: number | undefined;
 }
 
 export async function sendWhatsAppAlert(message: string): Promise<boolean> {
@@ -71,9 +23,9 @@ export async function sendWhatsAppAlert(message: string): Promise<boolean> {
   try {
     const client = Twilio(accountSid, authToken);
     await client.messages.create({
-      body: message,
       from,
       to,
+      body: message,
     });
     return true;
   } catch (error) {
@@ -86,41 +38,37 @@ export async function maybeSendSensorAlerts(input: {
   temperature: number;
   ammonia: number;
 }): Promise<boolean> {
-  const now = Date.now();
-  const alerts: Array<Promise<boolean>> = [];
+  const temperature = Number(input.temperature);
+  const ammonia = Number(input.ammonia);
 
-  const isHighTemperature = input.temperature >= 35;
-  if (shouldSendAlert("temperature", isHighTemperature, now)) {
-    alerts.push(
-      sendWhatsAppAlert(
-        `⚠️ High Temperature: ${input.temperature}°C detected. Fan turned ON automatically.`,
-      ).then((sent) => {
-        if (sent) {
-          markAlertSent("temperature", now);
+  console.log("Temp:", temperature);
+  console.log("Gas:", ammonia);
+
+  let alertSent = false;
+
+  if (temperature >= 35 || ammonia > 20) {
+    const now = Date.now();
+
+    if (!globalThis.lastAlertTime || now - globalThis.lastAlertTime > ALERT_COOLDOWN_MS) {
+      const message = `ALERT!
+Temperature: ${temperature} C
+Ammonia: ${ammonia}
+
+Fan turned ON automatically.`;
+
+      try {
+        alertSent = await sendWhatsAppAlert(message);
+        if (alertSent) {
+          globalThis.lastAlertTime = now;
+          console.log("WhatsApp alert sent");
         }
-        return sent;
-      }),
-    );
+      } catch (error) {
+        console.error("Twilio Error:", error instanceof Error ? error.message : String(error));
+      }
+    } else {
+      console.log("WhatsApp alert skipped: cooldown active.");
+    }
   }
 
-  const isHighAmmonia = input.ammonia > 20;
-  if (shouldSendAlert("ammonia", isHighAmmonia, now)) {
-    alerts.push(
-      sendWhatsAppAlert(
-        `⚠️ High Ammonia detected! Current ammonia: ${input.ammonia}. Improve ventilation immediately.`,
-      ).then((sent) => {
-        if (sent) {
-          markAlertSent("ammonia", now);
-        }
-        return sent;
-      }),
-    );
-  }
-
-  if (alerts.length === 0) {
-    return false;
-  }
-
-  const results = await Promise.all(alerts);
-  return results.some(Boolean);
+  return alertSent;
 }

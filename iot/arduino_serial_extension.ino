@@ -8,13 +8,17 @@ const unsigned long serialIntervalMs = 5000;
 unsigned long lastSerialSentAt = 0;
 String incomingCommand = "";
 const int fanControlPin = D5;
+const int ledControlPin = LED_BUILTIN;
 const bool fanRelayActiveLow = true;
+const bool ledActiveLow = true;
 
 void setup() {
   // Keep your existing setup code unchanged.
   Serial.begin(9600);
   pinMode(fanControlPin, OUTPUT);
+  pinMode(ledControlPin, OUTPUT);
   digitalWrite(fanControlPin, fanRelayActiveLow ? HIGH : LOW);
+  digitalWrite(ledControlPin, ledActiveLow ? HIGH : LOW);
 }
 
 void loop() {
@@ -82,9 +86,9 @@ void applyControlCommand(String command) {
     digitalWrite(fanControlPin, turnOn ? (fanRelayActiveLow ? LOW : HIGH) : (fanRelayActiveLow ? HIGH : LOW));
   }
 
-  // Replace this with your actual relay or transistor control for heater.
-  if (device == "heater") {
-    // digitalWrite(HEATER_RELAY_PIN, state == "ON" ? HIGH : LOW);
+  if (device == "led" || device == "heater") {
+    bool turnOn = state == "ON";
+    digitalWrite(ledControlPin, turnOn ? (ledActiveLow ? LOW : HIGH) : (ledActiveLow ? HIGH : LOW));
   }
 
   Serial.print("ACK:");

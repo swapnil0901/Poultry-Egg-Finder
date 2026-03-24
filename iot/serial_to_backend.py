@@ -8,9 +8,12 @@ import serial
 from requests import RequestException
 from serial import SerialException
 
-SERIAL_PORT = os.getenv("ARDUINO_COM_PORT", "COM3")
+SERIAL_PORT = os.getenv("ARDUINO_COM_PORT", "COM15")
 BAUD_RATE = int(os.getenv("ARDUINO_BAUD_RATE", "9600"))
-BACKEND_URL = os.getenv("BACKEND_DATA_URL", "http://127.0.0.1:5000/data")
+BACKEND_URL = os.getenv(
+    "BACKEND_DATA_URL",
+    "https://poultrymanager.vercel.app/api/data",
+)
 SERIAL_TIMEOUT_SECONDS = float(os.getenv("SERIAL_TIMEOUT_SECONDS", "1"))
 HTTP_TIMEOUT_SECONDS = float(os.getenv("HTTP_TIMEOUT_SECONDS", "10"))
 RECONNECT_DELAY_SECONDS = float(os.getenv("SERIAL_RECONNECT_DELAY_SECONDS", "5"))

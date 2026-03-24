@@ -18,7 +18,12 @@ SENSOR_POST_INTERVAL_SECONDS = float(os.getenv("SENSOR_POST_INTERVAL_SECONDS", "
 def normalize_control_payload(payload):
     return {
         "fan": str(payload.get("fan", {}).get("state", payload.get("fan", "OFF"))).upper(),
-        "heater": str(payload.get("heater", {}).get("state", payload.get("heater", "OFF"))).upper(),
+        "heater": str(
+            payload.get("heater", {}).get(
+                "state",
+                payload.get("heater", payload.get("led", "OFF")),
+            )
+        ).upper(),
     }
 
 

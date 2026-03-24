@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "cross-env NODE_ENV=development tsx server/index.ts",
+    "iot:bridge": "node iot/bridge.mjs",
     "build": "tsx script/build.ts",
     "build:client": "vite build",
     "preview": "vite preview",
@@ -77,6 +78,7 @@
     "react-icons": "^5.4.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.4",
+    "serialport": "^13.0.0",
     "tailwind-merge": "^2.6.1",
     "tailwindcss-animate": "^1.0.7",
     "tw-animate-css": "^1.2.5",

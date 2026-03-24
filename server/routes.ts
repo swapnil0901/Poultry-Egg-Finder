@@ -113,9 +113,7 @@ type StoredDeviceControl = {
 const controllableDevices = new Set<DeviceName>(["fan", "heater"]);
 
 function normalizeDeviceName(value: unknown): DeviceName | null {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase() as DeviceName;
+  const normalized = String(value ?? "").trim().toLowerCase() as DeviceName;
   return controllableDevices.has(normalized) ? normalized : null;
 }
 
@@ -200,7 +198,7 @@ function toDashboardSensorSnapshot(row: StoredSensorData): SensorSnapshot {
     gas_level: ammonia,
     water_level: "MEDIUM",
     light_level: 0,
-    fan: temperature >= 30 || ammonia > 300 ? "ON" : "OFF",
+    fan: temperature >= 35 || ammonia > 20 ? "ON" : "OFF",
     heater: "OFF",
     motor: "OFF",
     updated_at: new Date(row.created_at).toISOString(),
@@ -240,6 +238,29 @@ async function readLatestDeviceControls(): Promise<Record<DeviceName, ReturnType
   }
 
   return latest;
+}
+
+async function storeDeviceControlIfChanged(device: DeviceName, state: DeviceState) {
+  if (!isPostgresConfigured || !pool) {
+    return null;
+  }
+
+  const latest = await readLatestDeviceControls();
+  if (latest[device]?.state === state) {
+    return latest[device];
+  }
+
+  const result = await pool.query<StoredDeviceControl>(
+    `
+      INSERT INTO device_control (device, state)
+      VALUES ($1, $2)
+      RETURNING id, device, state, created_at
+    `,
+    [device, state],
+  );
+
+  const row = result.rows[0];
+  return row ? toDeviceControlResponse(row) : null;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -884,9 +905,12 @@ export async function registerRoutes(
       });
     }
 
-    const temperature = Number(req.body?.temperature ?? req.body?.temp);
-    const humidity = Number(req.body?.humidity ?? req.body?.hum);
-    const ammonia = Number(req.body?.ammonia ?? req.body?.gas);
+    const temperature = parseFloat(String(req.body?.temperature ?? req.body?.temp));
+    const humidity = parseFloat(String(req.body?.humidity ?? req.body?.hum));
+    const ammonia = parseFloat(String(req.body?.ammonia ?? req.body?.gas));
+
+    console.log("Temperature:", temperature);
+    console.log("Ammonia:", ammonia);
 
     if (
       !Number.isFinite(temperature) ||
@@ -914,6 +938,14 @@ export async function registerRoutes(
       if (!row) {
         throw new Error("Sensor insert returned no row.");
       }
+
+      const fanState: DeviceState = temperature >= 35 || ammonia > 20 ? "ON" : "OFF";
+      const heaterState: DeviceState = temperature >= 35 || ammonia > 20 ? "ON" : "OFF";
+
+      await Promise.all([
+        storeDeviceControlIfChanged("fan", fanState),
+        storeDeviceControlIfChanged("heater", heaterState),
+      ]);
 
       const alertSent = await maybeSendSensorAlerts({
         temperature,
