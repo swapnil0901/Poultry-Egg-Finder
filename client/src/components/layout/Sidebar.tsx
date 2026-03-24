@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useI18n } from "@/lib/i18n";
 import { motion } from "framer-motion";
 
 const navItems = [
@@ -53,6 +54,7 @@ const itemVariants = {
 export function Sidebar() {
   const [location] = useLocation();
   const { logout, user } = useAuth();
+  const { t } = useI18n();
 
   return (
     <aside className="w-72 hidden lg:flex flex-col bg-gradient-to-b from-primary to-primary/95 text-primary-foreground h-screen sticky top-0 shadow-2xl z-40 overflow-hidden relative">
@@ -77,7 +79,7 @@ export function Sidebar() {
         </motion.div>
         <div>
           <h1 className="text-2xl font-bold font-display tracking-tight leading-none text-white drop-shadow-sm">PoultryCare</h1>
-          <p className="text-xs text-primary-foreground/70 font-medium tracking-wide uppercase mt-1">Farm Management</p>
+          <p className="text-xs text-primary-foreground/70 font-medium tracking-wide uppercase mt-1">{t("Farm Management")}</p>
         </div>
       </motion.div>
       
@@ -114,7 +116,7 @@ export function Sidebar() {
                   <item.icon size={20} className="transition-transform duration-200" />
                 </motion.div>
                 
-                <span className="relative z-10">{item.label}</span>
+                <span className="relative z-10">{t(item.label)}</span>
               </Link>
             </motion.div>
           );
@@ -152,7 +154,7 @@ export function Sidebar() {
           className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-destructive/90 to-destructive text-white hover:from-destructive hover:to-destructive/90 transition-all duration-200 font-medium shadow-lg shadow-destructive/20 hover:shadow-lg hover:shadow-destructive/30"
         >
           <LogOut size={18} />
-          Sign Out
+          {t("Sign Out")}
         </motion.button>
       </motion.div>
     </aside>

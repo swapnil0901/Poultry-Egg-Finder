@@ -8,6 +8,7 @@ import {
   useAISmartReport,
 } from "@/hooks/use-poultry";
 import { api } from "@shared/routes";
+import { useI18n } from "@/lib/i18n";
 import { TrendingUp, Package, FileBarChart, Mic, MicOff, Volume2 } from "lucide-react";
 import { toApiUrl } from "@/lib/api-url";
 
@@ -77,6 +78,7 @@ const WAKE_PATTERNS = [
 ];
 
 export default function AIAssistant() {
+  const { t } = useI18n();
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const shouldContinueRef = useRef(false);
 
@@ -469,7 +471,7 @@ export default function AIAssistant() {
             <div>
               <h3 className="text-2xl font-bold font-display">Voice AI Assistant</h3>
               <p className="text-sm text-muted-foreground">
-                Say "{WAKE_WORD}" to activate, or use the mic button to speak.
+                {t('Say "hello pf" to activate, or use the mic button to speak.')}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -479,7 +481,7 @@ export default function AIAssistant() {
                 disabled={!supportsSpeech}
               >
                 {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-                {isListening ? "Stop" : "Start"}
+                {isListening ? t("Stop") : t("Start")}
               </Button>
               <Button
                 variant={continuousListening ? "gradient" : "outline"}
@@ -487,14 +489,14 @@ export default function AIAssistant() {
                 disabled={!supportsSpeech}
               >
                 <Volume2 size={18} />
-                {continuousListening ? "Continuous On" : "Continuous Off"}
+                {continuousListening ? t("Continuous On") : t("Continuous Off")}
               </Button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Select
-              label="Language"
+              label={t("Language")}
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
               disabled={!supportsSpeech}
@@ -505,10 +507,10 @@ export default function AIAssistant() {
             </Select>
             <div className="md:col-span-2">
               <Input
-                label="Type a question (optional)"
+                label={t("Type a question (optional)")}
                 value={manualInput}
                 onChange={(e) => setManualInput(e.target.value)}
-                placeholder="e.g., Show farm report"
+                placeholder={t("e.g., Show farm report")}
               />
             </div>
           </div>
@@ -516,16 +518,14 @@ export default function AIAssistant() {
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-semibold text-primary">{assistantStatus}</div>
             <Button variant="outline" onClick={handleManualSend} disabled={!manualInput.trim()}>
-              Send
+              {t("Send")}
             </Button>
           </div>
 
           <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
             {messages.length === 0 ? (
               <div className="text-sm text-muted-foreground">
-                Try: "How many eggs today?", "Show feed data", "Add expense 2500 for feed",
-                "Give poultry health tips", "How many chickens are healthy?", "Show sick chickens",
-                "Chicken mortality today", or "Show farm report".
+                {t('Try: "How many eggs today?", "Show feed data", "Add expense 2500 for feed", "Give poultry health tips", "How many chickens are healthy?", "Show sick chickens", "Chicken mortality today", or "Show farm report".')}
               </div>
             ) : (
               messages.map((msg) => (
@@ -539,7 +539,7 @@ export default function AIAssistant() {
                 >
                   <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                     <span className="font-semibold">
-                      {msg.role === "user" ? "You" : "Assistant"}
+                      {msg.role === "user" ? t("You") : t("Assistant")}
                     </span>
                     <span>{msg.timestamp}</span>
                   </div>
@@ -551,7 +551,7 @@ export default function AIAssistant() {
 
           {!supportsSpeech && (
             <div className="text-sm text-destructive">
-              Voice features are not supported in this browser. Please use the text input.
+              {t("Voice features are not supported in this browser. Please use the text input.")}
             </div>
           )}
           {supportsSpeech && voiceStatus && (
@@ -574,7 +574,7 @@ export default function AIAssistant() {
               onChange={(e) => setPredictionDays(e.target.value)}
             />
             <Button onClick={handleEggPrediction} disabled={isPredictionPending}>
-              {isPredictionPending ? "Predicting..." : "Predict"}
+              {isPredictionPending ? t("Predicting...") : t("Predict")}
             </Button>
           </div>
           {predictionResult && (
@@ -621,13 +621,13 @@ export default function AIAssistant() {
               value={weather}
               onChange={(e) => setWeather(e.target.value as "normal" | "hot" | "cold")}
             >
-              <option value="normal">Normal</option>
-              <option value="hot">Hot</option>
-              <option value="cold">Cold</option>
+              <option value="normal">{t("Normal")}</option>
+              <option value="hot">{t("Hot")}</option>
+              <option value="cold">{t("Cold")}</option>
             </Select>
           </div>
           <Button onClick={handleFeedRecommendation} disabled={isFeedPending}>
-            {isFeedPending ? "Calculating..." : "Get Feed Plan"}
+            {isFeedPending ? t("Calculating...") : t("Get Feed Plan")}
           </Button>
           {feedResult && (
             <div className="rounded-xl border border-border/60 bg-background/60 p-4 space-y-2">
@@ -652,15 +652,15 @@ export default function AIAssistant() {
           </div>
           <div className="flex items-end gap-3">
             <Select
-              label="Period"
+              label={t("Period")}
               value={reportPeriod}
               onChange={(e) => setReportPeriod(e.target.value as "weekly" | "monthly")}
             >
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
+              <option value="weekly">{t("Weekly")}</option>
+              <option value="monthly">{t("Monthly")}</option>
             </Select>
             <Button onClick={handleSmartReport} disabled={isReportPending}>
-              {isReportPending ? "Generating..." : "Generate Report"}
+              {isReportPending ? t("Generating...") : t("Generate Report")}
             </Button>
           </div>
           {reportResult && (
@@ -704,7 +704,7 @@ export default function AIAssistant() {
         {pendingExpense && (
           <div className="space-y-4">
             <Input
-              label="Amount (Rs)"
+              label={t("Amount (Rs)")}
               type="number"
               min="0"
               value={pendingExpense.amount}
@@ -715,7 +715,7 @@ export default function AIAssistant() {
               }
             />
             <Input
-              label="Expense Type"
+              label={t("Expense Type")}
               value={pendingExpense.expenseType}
               onChange={(e) =>
                 setPendingExpense((prev) =>
@@ -724,7 +724,7 @@ export default function AIAssistant() {
               }
             />
             <Input
-              label="Description"
+              label={t("Description")}
               value={pendingExpense.description}
               onChange={(e) =>
                 setPendingExpense((prev) =>
@@ -733,7 +733,7 @@ export default function AIAssistant() {
               }
             />
             <Input
-              label="Date"
+              label={t("Date")}
               type="date"
               value={pendingExpense.date}
               onChange={(e) =>
@@ -744,9 +744,9 @@ export default function AIAssistant() {
             />
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setPendingExpense(null)}>
-                Cancel
+                {t("Cancel")}
               </Button>
-              <Button onClick={createExpense}>Confirm & Save</Button>
+              <Button onClick={createExpense}>{t("Confirm & Save")}</Button>
             </div>
           </div>
         )}

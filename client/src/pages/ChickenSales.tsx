@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
 import { Button, Modal, Input, DataTable, Select } from "@/components/ui-kit";
 import { useChickenSales, useCreateChickenSale } from "@/hooks/use-poultry";
+import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Plus } from "lucide-react";
 
@@ -12,6 +13,7 @@ function normalizeChickenType(value: string | undefined): ChickenType {
 }
 
 export default function ChickenSales() {
+  const { t } = useI18n();
   const { data: sales, isLoading } = useChickenSales();
   const { mutateAsync: createChickenSale, isPending } = useCreateChickenSale();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,18 +74,18 @@ export default function ChickenSales() {
         description="Record live bird sales for both pure and broiler stock."
         action={
           <Button onClick={() => setIsModalOpen(true)}>
-            <Plus size={20} /> New Chicken Sale
+            <Plus size={20} /> {t("New Chicken Sale")}
           </Button>
         }
       />
 
       {isLoading ? (
-        <div className="p-8 text-center text-muted-foreground">Loading records...</div>
+        <div className="p-8 text-center text-muted-foreground">{t("Loading records...")}</div>
       ) : (
         <div className="space-y-8">
           <section className="space-y-3">
-            <h3 className="text-lg font-bold font-display text-primary">Pure Chicken Sales</h3>
-            <DataTable headers={["Date", "Customer", "Birds Sold", "Rate", "Total Amount", "Notes"]}>
+            <h3 className="text-lg font-bold font-display text-primary">{t("Pure Chicken Sales")}</h3>
+            <DataTable headers={[t("Date"), t("Customer"), t("Birds Sold"), t("Rate"), t("Total Amount"), t("Notes")]}>
               {pureSales.map((record) => (
                 <tr key={record.id} className="hover:bg-black/5 transition-colors">
                   <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
@@ -103,7 +105,7 @@ export default function ChickenSales() {
               {pureSales.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                    No pure chicken sale records yet.
+                    {t("No pure chicken sale records yet.")}
                   </td>
                 </tr>
               )}
@@ -111,8 +113,8 @@ export default function ChickenSales() {
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold font-display text-primary">Broiler Chicken Sales</h3>
-            <DataTable headers={["Date", "Customer", "Birds Sold", "Rate", "Total Amount", "Notes"]}>
+            <h3 className="text-lg font-bold font-display text-primary">{t("Broiler Chicken Sales")}</h3>
+            <DataTable headers={[t("Date"), t("Customer"), t("Birds Sold"), t("Rate"), t("Total Amount"), t("Notes")]}>
               {broilerSales.map((record) => (
                 <tr key={record.id} className="hover:bg-black/5 transition-colors">
                   <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
@@ -132,7 +134,7 @@ export default function ChickenSales() {
               {broilerSales.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                    No broiler chicken sale records yet.
+                    {t("No broiler chicken sale records yet.")}
                   </td>
                 </tr>
               )}
@@ -141,33 +143,33 @@ export default function ChickenSales() {
         </div>
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Record Chicken Sale">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={t("Record Chicken Sale")}>
         <form onSubmit={handleSubmit} className="space-y-5">
           <Input
-            label="Date"
+            label={t("Date")}
             type="date"
             required
             value={formData.date}
             onChange={(e) => setFormData({ ...formData, date: e.target.value })}
           />
           <Input
-            label="Customer Name"
+            label={t("Customer Name")}
             required
-            placeholder="e.g. Farm Fresh Buyers"
+            placeholder={t("e.g. Farm Fresh Buyers")}
             value={formData.customerName}
             onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
           />
           <Select
-            label="Chicken Type"
+            label={t("Chicken Type")}
             value={formData.chickenType}
             onChange={(e) => setFormData({ ...formData, chickenType: e.target.value as ChickenType })}
           >
-            <option value="Pure">Pure Chicken</option>
-            <option value="Broiler">Broiler Chicken</option>
+            <option value="Pure">{t("Pure Chicken")}</option>
+            <option value="Broiler">{t("Broiler Chicken")}</option>
           </Select>
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Birds Sold"
+              label={t("Birds Sold")}
               type="number"
               min="1"
               required
@@ -175,7 +177,7 @@ export default function ChickenSales() {
               onChange={(e) => setFormData({ ...formData, chickensSold: e.target.value })}
             />
             <Input
-              label="Price per Chicken (INR)"
+              label={t("Price per Chicken (INR)")}
               type="number"
               step="0.01"
               min="0"
@@ -185,21 +187,21 @@ export default function ChickenSales() {
             />
           </div>
           <Input
-            label="Notes (Optional)"
-            placeholder="Batch details, average weight, buyer notes..."
+            label={t("Notes (Optional)")}
+            placeholder={t("Batch details, average weight, buyer notes...")}
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           />
 
           <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex justify-between items-center mt-2">
-            <span className="font-semibold text-primary">Total Amount:</span>
+            <span className="font-semibold text-primary">{t("Total Amount:")}</span>
             <span className="font-display font-bold text-2xl text-primary">
               {formatCurrency(totalAmount)}
             </span>
           </div>
 
           <Button type="submit" className="w-full" disabled={isPending || totalAmount <= 0}>
-            {isPending ? "Processing..." : "Complete Chicken Sale"}
+            {isPending ? t("Processing...") : t("Complete Chicken Sale")}
           </Button>
         </form>
       </Modal>

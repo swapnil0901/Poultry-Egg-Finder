@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
 import { Button, Modal, Input, DataTable, Select } from "@/components/ui-kit";
 import { useChickens, useCreateChicken } from "@/hooks/use-poultry";
+import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/utils";
 import { Plus } from "lucide-react";
 
@@ -53,6 +54,7 @@ function calculateHealthyCount(totalChickens: number, sick: number, dead: number
 }
 
 export default function ChickenManagement() {
+  const { t } = useI18n();
   const { data: records, isLoading } = useChickens();
   const { mutateAsync: createRecord, isPending } = useCreateChicken();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -212,16 +214,16 @@ export default function ChickenManagement() {
       <PageHeader 
         title="Flock Management" 
         description="Monitor the size and health status of your flock."
-        action={<Button onClick={() => setIsModalOpen(true)}><Plus size={20}/> Update Census</Button>}
+        action={<Button onClick={() => setIsModalOpen(true)}><Plus size={20}/> {t("Update Census")}</Button>}
       />
 
       {isLoading ? (
-        <div className="p-8 text-center text-muted-foreground">Loading records...</div>
+        <div className="p-8 text-center text-muted-foreground">{t("Loading records...")}</div>
       ) : (
         <div className="space-y-8">
           <section className="space-y-3">
-            <h3 className="text-lg font-bold font-display text-primary">Pure Chicken</h3>
-            <DataTable headers={["Date", "Total Flock", "Healthy", "Sick", "Mortality", "New Chicks"]}>
+            <h3 className="text-lg font-bold font-display text-primary">{t("Pure Chicken")}</h3>
+            <DataTable headers={[t("Date"), t("Total Flock"), t("Healthy"), t("Sick"), t("Mortality"), t("New Chicks")]}>
               {pureRecords.map(record => (
                 <tr key={record.id} className="hover:bg-black/5 transition-colors">
                   <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
@@ -233,14 +235,14 @@ export default function ChickenManagement() {
                 </tr>
               ))}
               {pureRecords.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No pure chicken census data yet.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">{t("No pure chicken census data yet.")}</td></tr>
               )}
             </DataTable>
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-lg font-bold font-display text-primary">Broiler Chicken</h3>
-            <DataTable headers={["Date", "Total Flock", "Healthy", "Sick", "Mortality", "New Chicks"]}>
+            <h3 className="text-lg font-bold font-display text-primary">{t("Broiler Chicken")}</h3>
+            <DataTable headers={[t("Date"), t("Total Flock"), t("Healthy"), t("Sick"), t("Mortality"), t("New Chicks")]}>
               {broilerRecords.map(record => (
                 <tr key={record.id} className="hover:bg-black/5 transition-colors">
                   <td className="px-6 py-4 font-medium">{formatDate(record.date)}</td>
@@ -252,37 +254,37 @@ export default function ChickenManagement() {
                 </tr>
               ))}
               {broilerRecords.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">No broiler chicken census data yet.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">{t("No broiler chicken census data yet.")}</td></tr>
               )}
             </DataTable>
           </section>
         </div>
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Update Flock Census">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={t("Update Flock Census")}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select
-            label="Chicken Type"
+            label={t("Chicken Type")}
             value={formData.chickenType}
             onChange={e => syncFormForType(e.target.value as ChickenType)}
           >
-            <option value="Pure">Pure Chicken</option>
-            <option value="Broiler">Broiler Chicken</option>
+            <option value="Pure">{t("Pure Chicken")}</option>
+            <option value="Broiler">{t("Broiler Chicken")}</option>
           </Select>
           <Input 
-            label="Total Chickens" type="number" min="0" required
+            label={t("Total Chickens")} type="number" min="0" required
             value={formData.totalChickens}
             onChange={e => updateFormData({ totalChickens: e.target.value })}
             error={formErrors.totalChickens}
           />
           <div className="grid grid-cols-2 gap-4">
             <Input 
-              label="Healthy Count" type="number" min="0" required
+              label={t("Healthy Count")} type="number" min="0" required
               value={formData.healthy}
               readOnly
             />
             <Input 
-              label="Sick Count" type="number" min="0" required
+              label={t("Sick Count")} type="number" min="0" required
               value={formData.sick}
               onChange={e => updateFormData({ sick: e.target.value })}
               error={formErrors.sick}
@@ -290,20 +292,20 @@ export default function ChickenManagement() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input 
-              label="Mortalities (Dead)" type="number" min="0" required
+              label={t("Mortalities (Dead)")} type="number" min="0" required
               value={formData.dead}
               onChange={e => updateFormData({ dead: e.target.value })}
               error={formErrors.dead}
             />
             <Input 
-              label="New Chicks Added" type="number" min="0" required
+              label={t("New Chicks Added")} type="number" min="0" required
               value={formData.chicks}
               onChange={e => updateFormData({ chicks: e.target.value })}
               error={formErrors.chicks}
             />
           </div>
           <Button type="submit" className="w-full mt-4" disabled={isPending}>
-            {isPending ? "Saving..." : "Save Census"}
+            {isPending ? t("Saving...") : t("Save Census")}
           </Button>
         </form>
       </Modal>

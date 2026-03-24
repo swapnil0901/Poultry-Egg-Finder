@@ -1,6 +1,7 @@
 import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
 import { Button, Card, Input } from "@/components/ui-kit";
 import { useChickenSales, useDailyProfitReport, useEggs, useSales, useExpenses } from "@/hooks/use-poultry";
+import { useI18n } from "@/lib/i18n";
 import { Download } from "lucide-react";
 import Papa from "papaparse";
 import { useMemo, useState } from "react";
@@ -129,6 +130,7 @@ function normalizeRowsForExport(data: ExportRow[]): ExportRow[] {
 }
 
 export default function Reports() {
+  const { t } = useI18n();
   const { data: eggs } = useEggs();
   const { data: sales } = useSales();
   const { data: chickenSales } = useChickenSales();
@@ -152,7 +154,7 @@ export default function Reports() {
   };
 
   const exportCSV = (data: ExportRow[], filename: string) => {
-    if (!data || data.length === 0) return alert("No data to export");
+    if (!data || data.length === 0) return alert(t("No data to export"));
     const normalizedRows = normalizeRowsForExport(data);
     const csv = Papa.unparse(normalizedRows, {
       header: true,
@@ -192,20 +194,20 @@ export default function Reports() {
       <Card className="mb-6">
         <div className="grid gap-4 md:grid-cols-2">
           <Input
-            label="From Date"
+            label={t("From Date")}
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
           />
           <Input
-            label="To Date"
+            label={t("To Date")}
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
           />
         </div>
         <p className="mt-3 text-sm text-muted-foreground">
-          Selected date range will filter all CSV exports.
+          {t("Selected date range will filter all CSV exports.")}
         </p>
       </Card>
 
@@ -214,12 +216,12 @@ export default function Reports() {
           <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
             <Download size={32} />
           </div>
-          <h3 className="text-xl font-bold font-display mb-2">Daily Profit Report</h3>
+          <h3 className="text-xl font-bold font-display mb-2">{t("Daily Profit Report")}</h3>
           <p className="text-muted-foreground mb-6 text-sm">
-            Date, eggs sold, chickens sold, revenue, expenses, and net daily profit.
+            {t("Date, eggs sold, chickens sold, revenue, expenses, and net daily profit.")}
           </p>
           <Button className="w-full" onClick={() => exportCSV(filteredDailyProfitReport, 'daily_profit_report')}>
-            Download Daily Report
+            {t("Download Daily Report")}
           </Button>
         </Card>
 
@@ -227,36 +229,36 @@ export default function Reports() {
           <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
             <Download size={32} />
           </div>
-          <h3 className="text-xl font-bold font-display mb-2">Production Data</h3>
-          <p className="text-muted-foreground mb-6 text-sm">Daily egg collection records including dates and sheds.</p>
-          <Button className="w-full" onClick={() => exportCSV(filteredEggs, 'egg_production')}>Export CSV</Button>
+          <h3 className="text-xl font-bold font-display mb-2">{t("Production Data")}</h3>
+          <p className="text-muted-foreground mb-6 text-sm">{t("Daily egg collection records including dates and sheds.")}</p>
+          <Button className="w-full" onClick={() => exportCSV(filteredEggs, 'egg_production')}>{t("Export CSV")}</Button>
         </Card>
 
         <Card className="flex flex-col items-center justify-center p-8 text-center hover-lift">
           <div className="w-16 h-16 bg-success/10 text-success rounded-full flex items-center justify-center mb-4">
             <Download size={32} />
           </div>
-          <h3 className="text-xl font-bold font-display mb-2">Sales Ledger</h3>
-          <p className="text-muted-foreground mb-6 text-sm">All sales transactions, customer details, and generated revenue.</p>
-          <Button className="w-full" variant="secondary" onClick={() => exportCSV(filteredSales, 'egg_sales')}>Export CSV</Button>
+          <h3 className="text-xl font-bold font-display mb-2">{t("Sales Ledger")}</h3>
+          <p className="text-muted-foreground mb-6 text-sm">{t("All sales transactions, customer details, and generated revenue.")}</p>
+          <Button className="w-full" variant="secondary" onClick={() => exportCSV(filteredSales, 'egg_sales')}>{t("Export CSV")}</Button>
         </Card>
 
         <Card className="flex flex-col items-center justify-center p-8 text-center hover-lift">
           <div className="w-16 h-16 bg-info/10 text-info rounded-full flex items-center justify-center mb-4">
             <Download size={32} />
           </div>
-          <h3 className="text-xl font-bold font-display mb-2">Chicken Sales</h3>
-          <p className="text-muted-foreground mb-6 text-sm">Live bird sales records with customer, type, quantity, and value.</p>
-          <Button className="w-full" variant="secondary" onClick={() => exportCSV(filteredChickenSales, 'chicken_sales')}>Export CSV</Button>
+          <h3 className="text-xl font-bold font-display mb-2">{t("Chicken Sales")}</h3>
+          <p className="text-muted-foreground mb-6 text-sm">{t("Live bird sales records with customer, type, quantity, and value.")}</p>
+          <Button className="w-full" variant="secondary" onClick={() => exportCSV(filteredChickenSales, 'chicken_sales')}>{t("Export CSV")}</Button>
         </Card>
 
         <Card className="flex flex-col items-center justify-center p-8 text-center hover-lift">
           <div className="w-16 h-16 bg-destructive/10 text-destructive rounded-full flex items-center justify-center mb-4">
             <Download size={32} />
           </div>
-          <h3 className="text-xl font-bold font-display mb-2">Expense Reports</h3>
-          <p className="text-muted-foreground mb-6 text-sm">Detailed logs of farm operational costs and categories.</p>
-          <Button className="w-full" variant="outline" onClick={() => exportCSV(filteredExpenses, 'farm_expenses')}>Export CSV</Button>
+          <h3 className="text-xl font-bold font-display mb-2">{t("Expense Reports")}</h3>
+          <p className="text-muted-foreground mb-6 text-sm">{t("Detailed logs of farm operational costs and categories.")}</p>
+          <Button className="w-full" variant="outline" onClick={() => exportCSV(filteredExpenses, 'farm_expenses')}>{t("Export CSV")}</Button>
         </Card>
       </div>
     </AppLayout>

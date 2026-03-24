@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Input, Button, Card } from "@/components/ui-kit";
+import { useI18n } from "@/lib/i18n";
 import { Egg, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Auth() {
+  const { t } = useI18n();
   const nameRegex = /^[A-Za-z\s]+$/;
   const [isLogin, setIsLogin] = useState(true);
   const { login, register, isLoggingIn, isRegistering } = useAuth();
@@ -24,7 +26,7 @@ export default function Auth() {
       const trimmedName = formData.name.trim();
 
       if (!nameRegex.test(trimmedName)) {
-        setNameError("Name must contain only letters.");
+        setNameError(t("Name must contain only letters."));
         return;
       }
 
@@ -50,7 +52,7 @@ export default function Auth() {
       return;
     }
 
-    setNameError("Name must contain only letters.");
+    setNameError(t("Name must contain only letters."));
   };
 
   const containerVariants = {
@@ -126,7 +128,7 @@ export default function Auth() {
             variants={itemVariants}
             className="text-muted-foreground mt-2 text-lg"
           >
-            Smart farm management system
+            {t("Smart farm management system")}
           </motion.p>
         </motion.div>
 
@@ -143,7 +145,7 @@ export default function Auth() {
               transition={{ duration: 0.3 }}
               className="text-2xl font-bold mb-6 font-display text-center text-primary"
             >
-              {isLogin ? "Welcome Back" : "Create Account"}
+              {isLogin ? t("Welcome Back") : t("Create Account")}
             </motion.h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -155,12 +157,12 @@ export default function Auth() {
                 {!isLogin && (
                   <motion.div variants={itemVariants}>
                     <Input
-                      label="Full Name"
-                      placeholder="John Doe"
+                      label={t("Full Name")}
+                      placeholder={t("John Doe")}
                       value={formData.name}
                       onChange={(e) => handleNameChange(e.target.value)}
                       pattern="^[A-Za-z\\s]+$"
-                      title="Name must contain only letters."
+                      title={t("Name must contain only letters.")}
                       error={nameError}
                       required
                     />
@@ -168,9 +170,9 @@ export default function Auth() {
                 )}
                 <motion.div variants={itemVariants}>
                   <Input
-                    label="Email Address"
+                    label={t("Email Address")}
                     type="email"
-                    placeholder="you@farm.com"
+                    placeholder={t("you@farm.com")}
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
@@ -178,7 +180,7 @@ export default function Auth() {
                 </motion.div>
                 <motion.div variants={itemVariants}>
                   <Input
-                    label="Password"
+                    label={t("Password")}
                     type="password"
                     placeholder="********"
                     value={formData.password}
@@ -188,14 +190,14 @@ export default function Auth() {
                 </motion.div>
                 {!isLogin && (
                   <motion.div variants={itemVariants} className="flex flex-col gap-2">
-                    <label className="text-sm font-semibold text-foreground/70 ml-2">Role</label>
+                    <label className="text-sm font-semibold text-foreground/70 ml-2">{t("Role")}</label>
                     <select
                       className="w-full px-4 py-3 rounded-xl bg-white/60 backdrop-blur-sm border-2 border-border/40 text-foreground focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 transition-all duration-200 focus:shadow-lg focus:shadow-primary/10 focus:bg-white/80 cursor-pointer appearance-none"
                       value={formData.role}
                       onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                     >
-                      <option value="worker">Worker</option>
-                      <option value="admin">Admin</option>
+                      <option value="worker">{t("Worker")}</option>
+                      <option value="admin">{t("Admin")}</option>
                     </select>
                   </motion.div>
                 )}
@@ -221,7 +223,7 @@ export default function Auth() {
                     />
                   ) : (
                     <>
-                      {isLogin ? "Sign In" : "Sign Up"}
+                      {isLogin ? t("Sign In") : t("Sign Up")}
                       <ChevronRight size={18} />
                     </>
                   )}
@@ -236,7 +238,7 @@ export default function Auth() {
               className="mt-6 text-center text-sm font-medium"
             >
               <span className="text-muted-foreground">
-                {isLogin ? "Don't have an account? " : "Already have an account? "}
+                {isLogin ? t("Don't have an account? ") : t("Already have an account? ")}
               </span>
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -248,7 +250,7 @@ export default function Auth() {
                 }}
                 className="text-primary hover:text-primary/80 font-semibold transition-colors inline-flex items-center gap-1"
               >
-                {isLogin ? "Sign up" : "Sign in"}
+                {isLogin ? t("Sign up") : t("Sign in")}
                 <ChevronRight size={16} className="transition-transform group-hover:translate-x-1" />
               </motion.button>
             </motion.div>
@@ -261,7 +263,7 @@ export default function Auth() {
           transition={{ delay: 0.6, duration: 0.5 }}
           className="text-center text-muted-foreground text-xs mt-6"
         >
-          Secure farm management powered by advanced technology
+          {t("Secure farm management powered by advanced technology")}
         </motion.p>
       </motion.div>
     </div>

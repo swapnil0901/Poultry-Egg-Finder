@@ -25,6 +25,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { initializeNotifications } from "@/notification";
 import FloatingMicButton from "@/components/assistant/FloatingMicButton";
+import { LanguageProvider } from "@/lib/i18n";
 
 // Route guard component
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -109,11 +110,13 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <FloatingMicButton />
-        <Router />
-      </TooltipProvider>
+      <LanguageProvider>
+        <TooltipProvider>
+          <Toaster />
+          <FloatingMicButton />
+          <Router />
+        </TooltipProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

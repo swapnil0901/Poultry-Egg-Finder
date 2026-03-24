@@ -2,12 +2,14 @@ import { type FormEvent, useMemo, useState } from "react";
 import { AppLayout, PageHeader } from "@/components/layout/AppLayout";
 import { Button, Card, DataTable, Input, Modal } from "@/components/ui-kit";
 import { useCreateFeedMetric, useFeedMetrics } from "@/hooks/use-poultry";
+import { useI18n } from "@/lib/i18n";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Plus } from "lucide-react";
 
 const today = new Date().toISOString().split("T")[0];
 
 export default function FeedManagement() {
+  const { t } = useI18n();
   const { data: records, isLoading } = useFeedMetrics();
   const { mutateAsync: createFeedMetric, isPending } = useCreateFeedMetric();
 
@@ -59,30 +61,29 @@ export default function FeedManagement() {
         action={
           <Button onClick={() => setIsOpen(true)}>
             <Plus size={16} />
-            Add Feed Log
+            {t("Add Feed Log")}
           </Button>
         }
       />
 
       <Card className="mb-6">
         <p className="text-sm text-muted-foreground">
-          Low-feed alert threshold is configured on backend using `FEED_STOCK_ALERT_THRESHOLD_KG`
-          (default 10 kg).
+          {t("Low-feed alert threshold is configured on backend using `FEED_STOCK_ALERT_THRESHOLD_KG` (default 10 kg).")}
         </p>
       </Card>
 
       {isLoading ? (
-        <div className="p-8 text-center text-muted-foreground">Loading feed records...</div>
+        <div className="p-8 text-center text-muted-foreground">{t("Loading feed records...")}</div>
       ) : (
         <DataTable
           headers={[
-            "Date",
-            "Opening (kg)",
-            "Added (kg)",
-            "Consumed (kg)",
-            "Closing (kg)",
-            "Feed Cost",
-            "Notes",
+            t("Date"),
+            t("Opening (kg)"),
+            t("Added (kg)"),
+            t("Consumed (kg)"),
+            t("Closing (kg)"),
+            t("Feed Cost"),
+            t("Notes"),
           ]}
         >
           {(records ?? []).map((record) => (
@@ -99,17 +100,17 @@ export default function FeedManagement() {
           {(!records || records.length === 0) && (
             <tr>
               <td colSpan={7} className="px-6 py-10 text-center text-muted-foreground">
-                No feed logs found.
+                {t("No feed logs found.")}
               </td>
             </tr>
           )}
         </DataTable>
       )}
 
-      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="Add Feed Log">
+      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title={t("Add Feed Log")}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Date"
+            label={t("Date")}
             type="date"
             required
             value={formData.date}
@@ -117,7 +118,7 @@ export default function FeedManagement() {
           />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input
-              label="Opening Stock (kg)"
+              label={t("Opening Stock (kg)")}
               type="number"
               min="0"
               step="0.1"
@@ -126,7 +127,7 @@ export default function FeedManagement() {
               onChange={(e) => setFormData((prev) => ({ ...prev, openingStockKg: e.target.value }))}
             />
             <Input
-              label="Feed Added (kg)"
+              label={t("Feed Added (kg)")}
               type="number"
               min="0"
               step="0.1"
@@ -135,7 +136,7 @@ export default function FeedManagement() {
               onChange={(e) => setFormData((prev) => ({ ...prev, feedAddedKg: e.target.value }))}
             />
             <Input
-              label="Feed Consumed (kg)"
+              label={t("Feed Consumed (kg)")}
               type="number"
               min="0"
               step="0.1"
@@ -144,9 +145,9 @@ export default function FeedManagement() {
               onChange={(e) => setFormData((prev) => ({ ...prev, feedConsumedKg: e.target.value }))}
             />
           </div>
-          <Input label="Closing Stock (kg)" value={closingStockKg.toFixed(1)} readOnly />
+          <Input label={t("Closing Stock (kg)")} value={closingStockKg.toFixed(1)} readOnly />
           <Input
-            label="Feed Cost (INR)"
+            label={t("Feed Cost (INR)")}
             type="number"
             min="0"
             step="0.01"
@@ -154,13 +155,13 @@ export default function FeedManagement() {
             onChange={(e) => setFormData((prev) => ({ ...prev, feedCost: e.target.value }))}
           />
           <Input
-            label="Notes"
+            label={t("Notes")}
             value={formData.notes}
             onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
           />
 
           <Button type="submit" className="w-full mt-4" disabled={isPending}>
-            {isPending ? "Saving..." : "Save Feed Log"}
+            {isPending ? t("Saving...") : t("Save Feed Log")}
           </Button>
         </form>
       </Modal>

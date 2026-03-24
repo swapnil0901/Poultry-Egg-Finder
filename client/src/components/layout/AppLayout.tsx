@@ -1,12 +1,14 @@
 import { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { useAuth } from "@/hooks/use-auth";
+import { useI18n } from "@/lib/i18n";
 import { Egg } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
+  const { t } = useI18n();
 
   if (isLoading) {
     return (
@@ -108,6 +110,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 }
 
 export function PageHeader({ title, description, action }: { title: string, description: string, action?: ReactNode }) {
+  const { t } = useI18n();
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -125,7 +128,7 @@ export function PageHeader({ title, description, action }: { title: string, desc
           transition={{ delay: 0.1, duration: 0.5 }}
           className="text-3xl md:text-4xl font-bold font-display text-gradient tracking-tight drop-shadow-sm"
         >
-          {title}
+          {t(title)}
         </motion.h1>
         <motion.p 
           initial={{ opacity: 0, x: -20 }}
@@ -133,7 +136,7 @@ export function PageHeader({ title, description, action }: { title: string, desc
           transition={{ delay: 0.2, duration: 0.5 }}
           className="text-muted-foreground mt-2 text-lg"
         >
-          {description}
+          {t(description)}
         </motion.p>
       </div>
       {action && (
