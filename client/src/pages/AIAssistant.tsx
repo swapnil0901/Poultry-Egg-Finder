@@ -46,6 +46,7 @@ type BrowserSpeechRecognition = {
 };
 
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+type AssistantLanguage = "en-US" | "hi-IN" | "mr-IN";
 
 declare global {
   interface Window {
@@ -87,7 +88,7 @@ export default function AIAssistant() {
   const [isThinking, setIsThinking] = useState(false);
   const [awaitingCommand, setAwaitingCommand] = useState(false);
   const [continuousListening, setContinuousListening] = useState(false);
-  const [language, setLanguage] = useState("en-US");
+  const [language, setLanguage] = useState<AssistantLanguage>("en-US");
   const [messages, setMessages] = useState<VoiceMessage[]>([]);
   const [manualInput, setManualInput] = useState("");
   const [pendingExpense, setPendingExpense] = useState<PendingExpense | null>(null);
@@ -368,7 +369,7 @@ export default function AIAssistant() {
       const response = await fetch(toApiUrl("/api/ai"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, language }),
       });
 
       if (!response.ok) {
@@ -498,7 +499,7 @@ export default function AIAssistant() {
             <Select
               label={t("Language")}
               value={language}
-              onChange={(e) => setLanguage(e.target.value)}
+              onChange={(e) => setLanguage(e.target.value as AssistantLanguage)}
               disabled={!supportsSpeech}
             >
               <option value="en-US">English (US)</option>

@@ -380,7 +380,10 @@ export const api = {
     assistant: {
       method: 'POST' as const,
       path: '/api/ai' as const,
-      input: z.object({ message: z.string() }),
+      input: z.object({
+        message: z.string(),
+        language: z.enum(["en-US", "hi-IN", "mr-IN"]).optional(),
+      }),
       responses: {
         200: z.object({ response: z.string() }),
         500: errorSchemas.internal,
@@ -389,7 +392,10 @@ export const api = {
     chat: {
       method: 'POST' as const,
       path: '/api/ai-chat' as const,
-      input: z.object({ message: z.string() }),
+      input: z.object({
+        message: z.string(),
+        language: z.enum(["en-US", "hi-IN", "mr-IN"]).optional(),
+      }),
       responses: {
         200: z.object({ response: z.string() }),
         500: errorSchemas.internal,

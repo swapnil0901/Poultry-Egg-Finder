@@ -80,6 +80,8 @@ type SafeUser = {
   createdAt?: Date | string | null;
 };
 
+type AssistantLanguage = "en-US" | "hi-IN" | "mr-IN";
+
 type SensorSnapshot = {
   temperature: number;
   humidity: number;
@@ -527,6 +529,68 @@ function buildFallbackAIResponse(message: string, snapshot: FarmSnapshot): strin
   return `I can answer using your farm data. Ask about eggs, broken eggs, sales, profit, expenses, flock health, or vaccinations.\nQuick status: Eggs ${snapshot.totalEggs}, Revenue ${formatRupees(snapshot.totalRevenue)}, Profit ${formatRupees(snapshot.netProfit)}.`;
 }
 
+function getAssistantLanguageMeta(language: AssistantLanguage | undefined): {
+  code: AssistantLanguage;
+  label: string;
+  instruction: string;
+} {
+  switch (language) {
+    case "hi-IN":
+      return {
+        code: "hi-IN",
+        label: "Hindi",
+        instruction:
+          "Reply only in Hindi. Do not switch to English unless the user explicitly asks for English.",
+      };
+    case "mr-IN":
+      return {
+        code: "mr-IN",
+        label: "Marathi",
+        instruction:
+          "Reply only in Marathi. Do not switch to English unless the user explicitly asks for English.",
+      };
+    default:
+      return {
+        code: "en-US",
+        label: "English",
+        instruction: "Reply only in English.",
+      };
+  }
+}
+
+async function localizeAssistantText(
+  text: string,
+  language: AssistantLanguage | undefined,
+): Promise<string> {
+  const meta = getAssistantLanguageMeta(language);
+
+  if (meta.code === "en-US" || !openai) {
+    return text;
+  }
+
+  try {
+    const translation = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `${meta.instruction} Translate the assistant reply faithfully and keep all farm numbers, dates, and units unchanged.`,
+        },
+        {
+          role: "user",
+          content: text,
+        },
+      ],
+      temperature: 0.2,
+    });
+
+    return translation.choices[0]?.message?.content?.trim() || text;
+  } catch (error) {
+    console.error("Failed to localize AI response:", error);
+    return text;
+  }
+}
+
 function normalizeCommandText(message: string): string {
   return message.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -667,19 +731,23 @@ async function tryHandleVoiceCommands(message: string): Promise<string | null> {
   return null;
 }
 
-async function generateAIResponse(message: string): Promise<string> {
+async function generateAIResponse(
+  message: string,
+  language: AssistantLanguage | undefined,
+): Promise<string> {
   const snapshot = await buildFarmSnapshot();
   const commandResponse = await tryHandleVoiceCommands(message);
 
   if (commandResponse) {
-    return commandResponse;
+    return localizeAssistantText(commandResponse, language);
   }
 
   if (!openai) {
-    return buildFallbackAIResponse(message, snapshot);
+    return localizeAssistantText(buildFallbackAIResponse(message, snapshot), language);
   }
 
   try {
+    const meta = getAssistantLanguageMeta(language);
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -687,6 +755,10 @@ async function generateAIResponse(message: string): Promise<string> {
           role: "system",
           content:
             "You are a poultry farm expert assisting the Poultry Egg Tracker system. Use the provided farm snapshot values as the source of truth for numeric answers. If data is missing, state that clearly. Keep responses concise, practical, and action-oriented.",
+        },
+        {
+          role: "system",
+          content: `${meta.instruction} The user selected ${meta.label} in the app, so the full response must be in ${meta.label}.`,
         },
         {
           role: "system",
@@ -703,7 +775,7 @@ async function generateAIResponse(message: string): Promise<string> {
     );
   } catch (err) {
     console.error("OpenAI request failed, returning fallback response:", err);
-    return buildFallbackAIResponse(message, snapshot);
+    return localizeAssistantText(buildFallbackAIResponse(message, snapshot), language);
   }
 }
 
@@ -1477,8 +1549,8 @@ export async function registerRoutes(
   // AI Chat
   app.post(api.ai.chat.path, async (req, res) => {
     try {
-      const { message } = api.ai.chat.input.parse(req.body);
-      const response = await generateAIResponse(message);
+      const { message, language } = api.ai.chat.input.parse(req.body);
+      const response = await generateAIResponse(message, language);
       return res.json({ response });
     } catch (err) {
       console.error(err);
@@ -1489,8 +1561,8 @@ export async function registerRoutes(
   // Voice/Assistant AI (alias endpoint for front-end voice assistant)
   app.post(api.ai.assistant.path, async (req, res) => {
     try {
-      const { message } = api.ai.assistant.input.parse(req.body);
-      const response = await generateAIResponse(message);
+      const { message, language } = api.ai.assistant.input.parse(req.body);
+      const response = await generateAIResponse(message, language);
       return res.json({ response });
     } catch (err) {
       console.error(err);
